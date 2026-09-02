@@ -38,7 +38,9 @@ echo "== server: テスト =="
 (cd "$ROOT/server" && bun test 2>&1 | tail -3)
 
 echo "== web: テスト =="
-(cd "$ROOT/web" && bun test test/ 2>&1 | tail -3)
+# node_modules は git 管理外なので、クローン直後や別の場所へ移したときは空になる。
+# 毎回 install を走らせても、入っていれば一瞬で終わる
+(cd "$ROOT/web" && bun install --silent && bun test test/ 2>&1 | tail -3)
 
 echo "== 実機へインストール =="
 if ! command -v "$ADB" > /dev/null 2>&1 && [ ! -x "$ADB" ]; then
