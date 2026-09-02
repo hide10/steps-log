@@ -43,6 +43,11 @@ Android アプリ → クラウド(Google ドライブなど) → ブラウザ�
 
 ### 1. アプリを入れる
 
+[Releases](../../releases) から APK を落として端末に入れる。
+Play ストア外なので、初回は「提供元不明のアプリ」の許可を求められる。
+
+自分でビルドする場合:
+
 ```bash
 cd android
 ANDROID_HOME=<Android SDK> ./gradlew assembleDebug
@@ -84,6 +89,24 @@ cd web     && bun install && bun test test/
 
 設計方針とハマりどころは [`AGENTS.md`](AGENTS.md)、
 作業の引き継ぎは [`HANDOFF.md`](HANDOFF.md) にある。
+
+## リリース用のビルド
+
+`assembleRelease` は署名の設定を探す。**鍵もパスワードもリポジトリには入っていない。**
+
+```
+keystore.properties        # リポジトリ直下、または ~/steps-app-keys/ に置く
+  storeFile=<.jks のパス>
+  storePassword=...
+  keyAlias=...
+  keyPassword=...
+```
+
+見つからなければ署名なしのままビルドされるので、clone しただけでも組める。
+
+**鍵は失うと二度と作り直せない。** 別の鍵で署名した APK は、同じアプリの更新として
+インストールできない（端末で一度アンインストールが必要になり、記録が消える）。
+鍵ファイルとパスワードは、リポジトリとは別の場所に控えておくこと。
 
 ## 集計の規則（3実装で揃えること）
 

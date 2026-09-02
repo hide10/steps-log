@@ -41,6 +41,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import app.stepsapp.BuildConfig
 import app.stepsapp.domain.Accent
 import app.stepsapp.domain.DistanceUnit
 import app.stepsapp.domain.Goal
@@ -211,6 +212,14 @@ fun SettingsScreen(
                     Text("保存先を解除する")
                 }
             }
+
+            // どの版が入っているか、端末を見るだけで分かるようにする。
+            // 配布した APK と手元のビルドが混ざったときに要る
+            Text(
+                "バージョン ${BuildConfig.VERSION_NAME}（${BuildConfig.VERSION_CODE}）",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 
