@@ -1,3 +1,19 @@
+import java.util.Properties
+
+/**
+ * release 署名の設定。**鍵もパスワードも git には入れない。**
+ *
+ * リポジトリ直下の `keystore.properties` か、`~/steps-app-keys/keystore.properties`
+ * を読む。どちらも無ければ署名なしのままビルドする（他人が clone しても
+ * debug ビルドは通る）。
+ */
+val keystoreProps = Properties().apply {
+    listOf(
+        rootProject.file("keystore.properties"),
+        File(System.getProperty("user.home"), "steps-app-keys/keystore.properties"),
+    ).firstOrNull { it.exists() }?.inputStream()?.use { load(it) }
+}
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -14,16 +30,26 @@ android {
         applicationId = "app.stepsapp"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 2
+        versionName = "1.0.0"
+    }
+
+    signingConfigs {
+        if (keystoreProps.getProperty("storeFile") != null) {
+            create("release") {
+                storeFile = file(keystoreProps.getProperty("storeFile"))
+                storePassword = keystoreProps.getProperty("storePassword")
+                keyAlias = keystoreProps.getProperty("keyAlias")
+                keyPassword = keystoreProps.getProperty("keyPassword")
+            }
+        }
     }
 
     buildTypes {
         release {
-            // 個人利用のため当面は debug ビルドのみ運用する。
-            // release 署名を入れるときは keystore.properties 方式にし、
-            // 必ず .gitignore 済みであることを確認すること。
             isMinifyEnabled = false
+            // 鍵が無い環境では署名なしのままにする（clone しただけでも組める）
+            signingConfig = signingConfigs.findByName("release")
         }
     }
 
