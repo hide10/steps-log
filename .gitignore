@@ -1,0 +1,29 @@
+# --- 署名鍵（最優先: 最初のコミットから除外する） ---
+keystore.properties
+*.jks
+*.keystore
+
+# --- Android / Gradle ---
+.gradle/
+build/
+local.properties
+*.iml
+.idea/
+.cxx/
+
+# --- データベース・エクスポート実データ ---
+*.db
+*.db-wal
+*.db-shm
+/server/data/
+
+# --- Bun / Node ---
+node_modules/
+bun.lockb
+
+# --- OS ---
+.DS_Store
+*.Zone.Identifier
+
+# 環境ごとの設定（個人のパスが入る）
+dev.env

@@ -1,0 +1,6 @@
+{
+  "dependencies": {},
+  "devDependencies": {
+    "linkedom": "^0.18.13"
+  }
+}

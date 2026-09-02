@@ -1,0 +1,149 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- steps.json を GitHub へアップロードするため -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- 歩数センサー(TYPE_STEP_COUNTER)の読み取りに必須のランタイム権限 -->
+    <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />
+    <!-- 計測が止まっていることを知らせるため。拒否されても記録自体は動く -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- 端末再起動後に WorkManager を組み直し、センサーの基準値を打ち直すため -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+    <!-- Health Connect から歩数を読む。バックグラウンド読み取りは
+         WorkManager から読むために必要（Foreground Service は使わない） -->
+    <uses-permission android:name="android.permission.health.READ_STEPS" />
+    <!-- 体重・睡眠も自分の手元に持つため（拒否されても歩数の記録は動き続ける） -->
+    <uses-permission android:name="android.permission.health.READ_WEIGHT" />
+    <uses-permission android:name="android.permission.health.READ_SLEEP" />
+    <uses-permission android:name="android.permission.health.READ_HEALTH_DATA_IN_BACKGROUND" />
+    <!-- 権限付与から30日より前の過去データも取り込むため -->
+    <uses-permission android:name="android.permission.health.READ_HEALTH_DATA_HISTORY" />
+    <!-- 取れる健康データは全部取る。個別に拒否されても他は動く -->
+    <uses-permission android:name="android.permission.health.READ_HEART_RATE" />
+    <uses-permission android:name="android.permission.health.READ_RESTING_HEART_RATE" />
+    <uses-permission android:name="android.permission.health.READ_BLOOD_PRESSURE" />
+    <uses-permission android:name="android.permission.health.READ_BODY_FAT" />
+    <uses-permission android:name="android.permission.health.READ_OXYGEN_SATURATION" />
+    <uses-permission android:name="android.permission.health.READ_DISTANCE" />
+    <uses-permission android:name="android.permission.health.READ_ACTIVE_CALORIES_BURNED" />
+    <uses-permission android:name="android.permission.health.READ_FLOORS_CLIMBED" />
+    <uses-permission android:name="android.permission.health.READ_EXERCISE" />
+
+    <!-- 歩数計は歩数センサーのある端末でのみ意味があるが、
+         センサーが無い端末では Health Connect にフォールバックするため required=false -->
+    <uses-feature
+        android:name="android.hardware.sensor.stepcounter"
+        android:required="false" />
+
+    <application
+        android:name=".StepsApplication"
+        android:allowBackup="false"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:label="@string/app_name"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.StepsApp">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:theme="@style/Theme.StepsApp">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+            <!-- Android 13 以下: Health Connect の権限説明を求められたときの受け口 -->
+            <intent-filter>
+                <action android:name="androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE" />
+            </intent-filter>
+        </activity>
+
+        <!-- Android 14 以上: 同じく権限説明の受け口 -->
+        <activity-alias
+            android:name="ViewPermissionUsageActivity"
+            android:exported="true"
+            android:permission="android.permission.START_VIEW_PERMISSION_USAGE"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW_PERMISSION_USAGE" />
+                <category android:name="android.intent.category.HEALTH_PERMISSIONS" />
+            </intent-filter>
+        </activity-alias>
+
+
+        <receiver
+            android:name=".widget.RingWidgetReceiver"
+            android:exported="true"
+            android:label="歩数リング">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_ring" />
+        </receiver>
+
+        <receiver
+            android:name=".widget.WeekWidgetReceiver"
+            android:exported="true"
+            android:label="歩数と週グラフ">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_week" />
+        </receiver>
+
+        <receiver
+            android:name=".widget.SummaryWidgetReceiver"
+            android:exported="true"
+            android:label="からだのまとめ">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_summary" />
+        </receiver>
+
+        <receiver
+            android:name=".widget.MonthWidgetReceiver"
+            android:exported="true"
+            android:label="月グラフ">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_month" />
+        </receiver>
+
+        <receiver
+            android:name=".work.BootCompletedReceiver"
+            android:enabled="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
+
+        <!-- 共有画像だけを外部アプリに渡す。範囲は res/xml/file_paths.xml で
+             キャッシュの share/ に限定してある -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+
+    </application>
+
+</manifest>

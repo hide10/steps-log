@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">歩数ログ</string>
+    <string name="widget_ring_desc">今日の歩数と目標の達成度</string>
+    <string name="widget_week_desc">今日の歩数と直近7日のグラフ</string>
+    <string name="widget_summary_desc">歩数・連続日数・体重・睡眠のまとめ</string>
+    <string name="widget_month_desc">今月の平均と日別のグラフ</string>
+</resources>

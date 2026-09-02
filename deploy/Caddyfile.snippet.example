@@ -1,0 +1,7 @@
+# Caddy でローカルのホスト名を割り当てる場合の例。
+# @HOST@ は好きな名前に置き換える（例: steps.home.arpa）。
+# localtls は自前の内部CA用スニペット。無ければ tls internal を直接書く。
+@HOST@ {
+	import localtls
+	reverse_proxy 127.0.0.1:8430
+}

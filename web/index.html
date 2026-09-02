@@ -1,0 +1,603 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>歩数ログ</title>
+<style>
+  :root { color-scheme: light dark; --accent: #4c8bf5; --ok: #2e9e6b; }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 24px 16px; font-family: system-ui, sans-serif; line-height: 1.6; }
+  main { max-width: 880px; margin: 0 auto; }
+  header { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+  h1 { font-size: 1.3rem; margin: 0; }
+  .muted { opacity: .65; font-size: .85rem; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  button, label.file { font: inherit; padding: 6px 14px; border-radius: 999px;
+    border: 1px solid currentColor; background: transparent; color: inherit; cursor: pointer; }
+  button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .ring-wrap { display: flex; justify-content: center; margin: 20px 0 8px; }
+  .stats { display: flex; justify-content: space-around; text-align: center; margin: 8px 0 20px; }
+  .stats b { display: block; font-size: 1.15rem; font-weight: 600; }
+  .stats span { font-size: .75rem; opacity: .7; }
+  .scroll { overflow-x: auto; }
+  .bar { fill: var(--accent); }
+  .tick { font-size: 9px; text-anchor: middle; fill: currentColor; opacity: .55; }
+  table { border-collapse: collapse; width: 100%; font-size: .9rem; margin-top: 8px; }
+  th, td { text-align: right; padding: 6px 8px; border-bottom: 1px solid rgba(128,128,128,.25); }
+  th:first-child, td:first-child { text-align: left; }
+  .empty { opacity: .6; padding: 24px 0; text-align: center; }
+  .note { font-size: .8rem; opacity: .7; margin-top: 24px; }
+  input[type=file] { display: none; }
+  .swatch { width: 22px; height: 22px; border-radius: 50%; cursor: pointer;
+    border: 2px solid transparent; padding: 0; }
+  .swatch[aria-pressed="true"] { border-color: currentColor; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>歩数ログ</h1>
+    <span class="muted" id="source">データ未読み込み</span>
+  </header>
+
+  <div class="row" style="margin-top:12px">
+    <button id="pickFolder">フォルダを選ぶ</button>
+    <label class="file">ファイルを開く<input type="file" id="file" accept=".json,application/json"></label>
+    <button id="clear">読み込んだデータを消す</button>
+    <span class="muted">目標</span>
+    <select id="goal"></select>
+    <span class="muted">色</span>
+    <span class="row" id="accents"></span>
+  </div>
+
+  <div id="content" hidden>
+    <div class="ring-wrap" id="ring"></div>
+    <div class="stats" id="stats"></div>
+
+    <div class="row" id="periods"></div>
+    <p id="comparison" class="muted"></p>
+    <div id="chart" class="scroll"></div>
+    <div id="table"></div>
+  </div>
+
+  <p class="empty" id="placeholder">
+    スマホアプリが Google ドライブに上げた <code>steps.json</code> を開いてください。<br>
+    <span class="muted">読み込んだデータはこのブラウザの中だけで処理され、どこにも送信されません。</span>
+  </p>
+
+  <p class="note">
+    平均は記録がある日だけを分母にしています（未計測の日は含めません）。
+    「記録日数」は 記録がある日 / その期間の暦日数 です。
+    週は月曜始まりです。
+  </p>
+</main>
+
+<script type="module">
+// --- aggregate.js をそのまま埋め込む ---------------------------------------
+// file:// で直接開けるようにするため。ES モジュールの import は
+// file:// では CORS で弾かれ、Google ドライブのフォルダから
+// ダブルクリックで開けなくなってしまう。
+// 集計ロジック。ブラウザでそのまま動くよう依存を持たない。
+//
+// **週の境界の規則は server/src/aggregate.ts の SQL および
+// android/.../domain/Aggregate.kt と完全に一致させること。**
+// ズレると同じ週なのに違う数字が出る。
+
+/**
+ * その日が属する週の月曜日を返す。
+ *
+ * `%Y-%W` 相当でグルーピングしてはいけない（年をまたぐ週が分断される）。
+ * @param {string} dateText YYYY-MM-DD
+ * @returns {string} YYYY-MM-DD
+ */
+function weekStart(dateText) {
+  const d = new Date(dateText + "T00:00:00Z");
+  // getUTCDay(): 0=日曜。月曜起点にするため (day + 6) % 7 日ぶん戻す
+  const back = (d.getUTCDay() + 6) % 7;
+  d.setUTCDate(d.getUTCDate() - back);
+  return d.toISOString().slice(0, 10);
+}
+
+function daysInMonth(key) {
+  const [y, m] = key.split("-").map(Number);
+  return new Date(Date.UTC(y, m, 0)).getUTCDate();
+}
+
+function isLeapYear(y) {
+  return (y % 4 === 0 && y % 100 !== 0) || y % 400 === 0;
+}
+
+function daysInPeriod(key, period) {
+  switch (period) {
+    case "day": return 1;
+    case "week": return 7;
+    case "month": return daysInMonth(key);
+    case "year": return isLeapYear(Number(key)) ? 366 : 365;
+    default: return 1;
+  }
+}
+
+/**
+ * 日次の記録を期間ごとにまとめる。
+ *
+ * **平均の分母は記録がある日だけ。** 未計測の日を0歩として平均を下げない。
+ * 0歩と記録された日は分母に含める。
+ *
+ * @param {Record<string, number>} stepsByDate 日付 -> 歩数（記録がある日だけ）
+ * @param {"day"|"week"|"month"|"year"} period
+ */
+function aggregate(stepsByDate, period) {
+  const groups = new Map();
+  for (const [dateText, steps] of Object.entries(stepsByDate)) {
+    let key;
+    switch (period) {
+      case "day": key = dateText; break;
+      case "week": key = weekStart(dateText); break;
+      case "month": key = dateText.slice(0, 7); break;
+      case "year": key = dateText.slice(0, 4); break;
+    }
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(steps);
+  }
+
+  return [...groups.entries()]
+    .map(([key, values]) => {
+      const total = values.reduce((a, b) => a + b, 0);
+      return {
+        key,
+        total,
+        average: total / values.length,
+        daysRecorded: values.length,
+        daysInPeriod: daysInPeriod(key, period),
+      };
+    })
+    .sort((a, b) => (a.key < b.key ? 1 : -1));
+}
+
+/** 目標に対する達成率。リング表示のため 1 で頭打ちにする。 */
+function achievedRatio(steps, goal) {
+  if (goal <= 0) return 0;
+  return Math.min(1, Math.max(0, steps / goal));
+}
+
+function isAchieved(steps, goal) {
+  return steps >= goal;
+}
+
+/**
+ * 連続達成日数。
+ *
+ * **未計測の日は切らない**（端末を持たなかっただけかもしれない）。
+ * **0歩と記録された日は切る**（実際に歩かなかったと確定している）。
+ * **当日が未達でも切らない**（まだ挽回できる）。
+ */
+function currentStreak(stepsByDate, todayText, goal) {
+  let streak = 0;
+  let date = todayText;
+
+  const todaySteps = stepsByDate[todayText];
+  if (todaySteps === undefined || !isAchieved(todaySteps, goal)) {
+    date = shiftDate(todayText, -1);
+  }
+
+  const oldest = Object.keys(stepsByDate).sort()[0];
+  if (oldest === undefined) return 0;
+
+  while (date >= oldest) {
+    const steps = stepsByDate[date];
+    if (steps !== undefined) {
+      if (isAchieved(steps, goal)) streak++;
+      else return streak;      // 記録があって未達 → ここで途切れる
+    }
+    date = shiftDate(date, -1);
+  }
+  return streak;
+}
+
+/** これまでの最長の連続達成日数。 */
+function longestStreak(stepsByDate, goal) {
+  const achieved = Object.keys(stepsByDate)
+    .filter((d) => isAchieved(stepsByDate[d], goal))
+    .sort();
+  if (achieved.length === 0) return 0;
+
+  let best = 1;
+  let run = 1;
+  for (let i = 1; i < achieved.length; i++) {
+    // 間の日がすべて未計測なら連続とみなす
+    let gapAllUnmeasured = true;
+    for (let d = shiftDate(achieved[i - 1], 1); d < achieved[i]; d = shiftDate(d, 1)) {
+      if (stepsByDate[d] !== undefined) { gapAllUnmeasured = false; break; }
+    }
+    run = gapAllUnmeasured ? run + 1 : 1;
+    best = Math.max(best, run);
+  }
+  return best;
+}
+
+function shiftDate(dateText, days) {
+  const d = new Date(dateText + "T00:00:00Z");
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+/**
+ * 直前の期間との平均の差。
+ * **期間の途中では同じ経過日数までで比べる**（月初の不公平を避ける）。
+ */
+function compareAverages(current, previous, elapsedDays) {
+  const cur = Object.values(current);
+  if (cur.length === 0) return null;
+
+  const prev = Object.keys(previous).sort().slice(0, elapsedDays).map((k) => previous[k]);
+  if (prev.length === 0) return null;
+
+  const avg = (xs) => xs.reduce((a, b) => a + b, 0) / xs.length;
+  return avg(cur) - avg(prev);
+}
+// --- ここまで ---------------------------------------------------------------
+
+
+const STORAGE_KEY = "steps-log-data";
+const DIR_DB = "steps-log-dir";
+const GOAL_KEY = "steps-log-goal";
+const PRESETS = [3000, 5000, 6000, 8000, 10000, 12000, 15000];
+const ACCENT_KEY = "steps-log-accent";
+// Android 側 domain/Accent.kt と同じ色にそろえる
+const ACCENTS = {
+  BLUE:   { label: "ブルー",   color: "#4C8BF5", achieved: "#2565D8" },
+  GREEN:  { label: "グリーン", color: "#3FBE83", achieved: "#1B7F52" },
+  ORANGE: { label: "オレンジ", color: "#E8833A", achieved: "#C25F16" },
+  PURPLE: { label: "パープル", color: "#8A6BD1", achieved: "#6242B0" },
+  PINK:   { label: "ピンク",   color: "#D9578C", achieved: "#B33366" },
+  TEAL:   { label: "ティール", color: "#2AA6A6", achieved: "#16807F" },
+};
+let accent = "BLUE";
+
+function applyAccent() {
+  const a = ACCENTS[accent] ?? ACCENTS.BLUE;
+  document.documentElement.style.setProperty("--accent", a.color);
+  document.documentElement.style.setProperty("--ok", a.achieved);
+  for (const b of el("accents").querySelectorAll("button")) {
+    b.setAttribute("aria-pressed", String(b.dataset.accent === accent));
+  }
+}
+
+const el = (id) => document.getElementById(id);
+let stepsByDate = {};
+let period = "day";
+let goal = 6000;
+
+// --- 保存（このブラウザの中だけ。外には出ない） -------------------------------
+
+function load() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) stepsByDate = JSON.parse(raw);
+    const g = localStorage.getItem(GOAL_KEY);
+    if (g) goal = Number(g);
+    const a = localStorage.getItem(ACCENT_KEY);
+    if (a && ACCENTS[a]) accent = a;
+  } catch (e) {
+    // プライベートウィンドウなどで localStorage が使えなくても動くようにする
+    console.warn("保存データを読めませんでした", e);
+  }
+}
+
+function save() {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(stepsByDate));
+    localStorage.setItem(GOAL_KEY, String(goal));
+    localStorage.setItem(ACCENT_KEY, accent);
+  } catch (e) {
+    console.warn("保存できませんでした", e);
+  }
+}
+
+// --- 読み込み ---------------------------------------------------------------
+
+/** アプリが書き出す steps.json（days 配列）を 日付->歩数 に変換する。 */
+function parseBackup(text) {
+  const data = JSON.parse(text);
+  const days = data.days ?? [];
+  if (!Array.isArray(days)) throw new Error("days が配列ではありません");
+  const out = {};
+  for (const d of days) {
+    if (typeof d.localDate !== "string" || typeof d.stepCount !== "number") continue;
+    out[d.localDate] = d.stepCount;
+  }
+  return out;
+}
+
+// --- フォルダを覚えて自動で読み直す -----------------------------------------
+//
+// Google ドライブのデスクトップ版が作るフォルダ（G:\マイドライブ\...）を
+// そのまま選べる。端末が上書きした steps.json を、開くたびに読み直せるので
+// 毎回ダウンロードする必要がない。ローカルのフォルダでも同じように使える。
+//
+// フォルダのハンドルは IndexedDB に保存する（localStorage には入れられない）。
+
+function openDirDb() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(DIR_DB, 1);
+    req.onupgradeneeded = () => req.result.createObjectStore("handles");
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function saveDirHandle(handle) {
+  try {
+    const db = await openDirDb();
+    await new Promise((res, rej) => {
+      const tx = db.transaction("handles", "readwrite");
+      tx.objectStore("handles").put(handle, "dir");
+      tx.oncomplete = res;
+      tx.onerror = () => rej(tx.error);
+    });
+  } catch (e) {
+    console.warn("フォルダを覚えられませんでした", e);
+  }
+}
+
+async function loadDirHandle() {
+  try {
+    const db = await openDirDb();
+    return await new Promise((res, rej) => {
+      const tx = db.transaction("handles", "readonly");
+      const r = tx.objectStore("handles").get("dir");
+      r.onsuccess = () => res(r.result ?? null);
+      r.onerror = () => rej(r.error);
+    });
+  } catch (e) {
+    return null;
+  }
+}
+
+/** フォルダから steps.json を読む。権限が切れていたら再要求する。 */
+async function readFromDir(handle, { prompt = false } = {}) {
+  const opts = { mode: "read" };
+  let perm = await handle.queryPermission(opts);
+  if (perm !== "granted") {
+    if (!prompt) return null;
+    perm = await handle.requestPermission(opts);
+    if (perm !== "granted") return null;
+  }
+  const fileHandle = await handle.getFileHandle("steps.json");
+  const file = await fileHandle.getFile();
+  return { text: await file.text(), modified: file.lastModified };
+}
+
+async function useDir(handle, { prompt = false } = {}) {
+  const got = await readFromDir(handle, { prompt });
+  if (!got) return false;
+  stepsByDate = parseBackup(got.text);
+  save();
+  el("source").textContent =
+    `${handle.name} ・ ${Object.keys(stepsByDate).length} 日分 ` +
+    `（${new Date(got.modified).toLocaleString("ja-JP")} 更新）`;
+  render();
+  return true;
+}
+
+el("pickFolder").addEventListener("click", async () => {
+  if (!window.showDirectoryPicker) {
+    alert("このブラウザはフォルダ選択に対応していません。「ファイルを開く」を使ってください。");
+    return;
+  }
+  try {
+    const handle = await window.showDirectoryPicker({ id: "steps-log" });
+    if (!(await useDir(handle, { prompt: true }))) {
+      alert("そのフォルダに steps.json が見つかりませんでした");
+      return;
+    }
+    await saveDirHandle(handle);
+  } catch (e) {
+    if (e.name !== "AbortError") alert("開けませんでした: " + e.message);
+  }
+});
+
+el("file").addEventListener("change", async (ev) => {
+  const file = ev.target.files?.[0];
+  if (!file) return;
+  try {
+    stepsByDate = parseBackup(await file.text());
+    el("source").textContent =
+      `${file.name} ・ ${Object.keys(stepsByDate).length} 日分`;
+    save();
+    render();
+  } catch (e) {
+    alert("読み込めませんでした: " + e.message);
+  }
+  ev.target.value = "";
+});
+
+el("clear").addEventListener("click", () => {
+  stepsByDate = {};
+  try { localStorage.removeItem(STORAGE_KEY); } catch {}
+  el("source").textContent = "データ未読み込み";
+  render();
+});
+
+// --- 描画 -------------------------------------------------------------------
+
+function ringSvg(steps, ratio, achieved) {
+  const size = 200, stroke = 18, r = (size - stroke) / 2, c = 2 * Math.PI * r;
+  const color = achieved ? "var(--ok)" : "var(--accent)";
+  return `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" role="img">
+    <circle cx="${size/2}" cy="${size/2}" r="${r}" fill="none"
+            stroke="rgba(128,128,128,.25)" stroke-width="${stroke}"/>
+    <circle cx="${size/2}" cy="${size/2}" r="${r}" fill="none"
+            stroke="${color}" stroke-width="${stroke}" stroke-linecap="round"
+            stroke-dasharray="${c}" stroke-dashoffset="${c * (1 - ratio)}"
+            transform="rotate(-90 ${size/2} ${size/2})"/>
+    <text x="50%" y="46%" text-anchor="middle" font-size="34" font-weight="600"
+          fill="currentColor">${steps.toLocaleString()}</text>
+    <text x="50%" y="60%" text-anchor="middle" font-size="13"
+          fill="${achieved ? color : "currentColor"}" opacity="${achieved ? 1 : .6}">
+      ${achieved ? "目標達成" : goal.toLocaleString() + " 歩"}</text>
+  </svg>`;
+}
+
+function barChart(data) {
+  if (data.length === 0) return `<p class="empty">データがありません</p>`;
+  const h = 150, bw = 26, gap = 6, band = 22;
+  const w = data.length * (bw + gap) + gap;
+  const max = Math.max(1, ...data.map((d) => d.value));
+  const bars = data.map((d, i) => {
+    const bh = Math.round((d.value / max) * h);
+    const x = gap + i * (bw + gap);
+    return `<rect class="bar" x="${x}" y="${h - bh}" width="${bw}" height="${bh}" rx="3">
+      <title>${esc(d.label)}: ${d.value.toLocaleString()} 歩</title></rect>
+      <text class="tick" x="${x + bw / 2}" y="${h + 14}">${esc(shortLabel(d.label))}</text>`;
+  }).join("");
+  return `<svg width="${w}" height="${h + band}" viewBox="0 0 ${w} ${h + band}">${bars}</svg>`;
+}
+
+function shortLabel(label) {
+  const p = label.split("-");
+  if (p.length === 3) return `${p[1]}/${p[2]}`;
+  if (p.length === 2) return p[1];
+  return label;
+}
+
+function esc(s) {
+  return String(s).replaceAll("&", "&amp;").replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;").replaceAll('"', "&quot;");
+}
+
+function todayText() {
+  const now = new Date();
+  const local = new Date(now.getTime() - now.getTimezoneOffset() * 60000);
+  return local.toISOString().slice(0, 10);
+}
+
+/** 直前の同じ期間と、同じ経過日数までで比べる。 */
+function comparisonText() {
+  if (period === "day") return "";
+  const today = todayText();
+  let curStart, prevStart, unit;
+  if (period === "week") {
+    curStart = weekStart(today);
+    const d = new Date(curStart + "T00:00:00Z"); d.setUTCDate(d.getUTCDate() - 7);
+    prevStart = d.toISOString().slice(0, 10); unit = "先週";
+  } else if (period === "month") {
+    curStart = today.slice(0, 8) + "01";
+    const d = new Date(curStart + "T00:00:00Z"); d.setUTCMonth(d.getUTCMonth() - 1);
+    prevStart = d.toISOString().slice(0, 10); unit = "先月";
+  } else {
+    curStart = today.slice(0, 4) + "-01-01";
+    prevStart = (Number(today.slice(0, 4)) - 1) + "-01-01"; unit = "去年";
+  }
+
+  const cur = {}, prev = {};
+  for (const [d, v] of Object.entries(stepsByDate)) {
+    if (d >= curStart) cur[d] = v;
+    else if (d >= prevStart) prev[d] = v;
+  }
+  const diff = compareAverages(cur, prev, Math.max(1, Object.keys(cur).length));
+  if (diff === null) return "";
+  const n = Math.round(diff);
+  if (n > 0) return `${unit}の同じ時期より 1日あたり ${n.toLocaleString()} 歩 多い`;
+  if (n < 0) return `${unit}の同じ時期より 1日あたり ${(-n).toLocaleString()} 歩 少ない`;
+  return `${unit}の同じ時期とほぼ同じ`;
+}
+
+function render() {
+  const has = Object.keys(stepsByDate).length > 0;
+  el("content").hidden = !has;
+  el("placeholder").hidden = has;
+  if (!has) return;
+
+  const today = todayText();
+  const todaySteps = stepsByDate[today] ?? 0;
+  const achieved = isAchieved(todaySteps, goal);
+
+  el("ring").innerHTML = ringSvg(todaySteps, achievedRatio(todaySteps, goal), achieved);
+
+  const streak = currentStreak(stepsByDate, today, goal);
+  const best = longestStreak(stepsByDate, goal);
+  const recorded = Object.keys(stepsByDate).length;
+  el("stats").innerHTML = `
+    <div><b>${streak > 0 ? streak + "日" : "—"}</b><span>連続</span></div>
+    <div><b>${best > 0 ? best + "日" : "—"}</b><span>自己ベスト</span></div>
+    <div><b>${recorded}</b><span>記録日数</span></div>`;
+
+  const buckets = aggregate(stepsByDate, period).slice(0, 30);
+  el("comparison").textContent = comparisonText();
+  el("chart").innerHTML = barChart(
+    buckets.slice().reverse().map((b) => ({
+      label: b.key,
+      value: Math.round(period === "day" ? b.total : b.average),
+    })),
+  );
+
+  const unit = { day: "日", week: "週の開始", month: "月", year: "年" }[period];
+  el("table").innerHTML = `<table><thead><tr>
+      <th>${unit}</th><th>${period === "day" ? "歩数" : "平均"}</th>
+      <th>合計</th><th>記録日数</th></tr></thead><tbody>` +
+    buckets.map((b) => `<tr><td>${esc(b.key)}</td>
+      <td>${Math.round(period === "day" ? b.total : b.average).toLocaleString()}</td>
+      <td>${b.total.toLocaleString()}</td>
+      <td>${b.daysRecorded} / ${b.daysInPeriod}</td></tr>`).join("") +
+    `</tbody></table>`;
+}
+
+// --- 初期化 -----------------------------------------------------------------
+
+el("periods").innerHTML = [["day","日"],["week","週"],["month","月"],["year","年"]]
+  .map(([p, label]) => `<button data-period="${p}">${label}</button>`).join("");
+el("periods").addEventListener("click", (ev) => {
+  const p = ev.target.dataset?.period;
+  if (!p) return;
+  period = p;
+  updatePeriodButtons();
+  render();
+});
+function updatePeriodButtons() {
+  for (const b of el("periods").querySelectorAll("button")) {
+    b.setAttribute("aria-pressed", String(b.dataset.period === period));
+  }
+}
+
+el("goal").innerHTML = PRESETS
+  .map((p) => `<option value="${p}">${p.toLocaleString()} 歩</option>`).join("");
+el("goal").addEventListener("change", (ev) => {
+  goal = Number(ev.target.value);
+  save();
+  render();
+});
+
+el("accents").innerHTML = Object.entries(ACCENTS)
+  .map(([k, a]) => `<button class="swatch" data-accent="${k}" title="${a.label}"
+    style="background:${a.color}"></button>`).join("");
+el("accents").addEventListener("click", (ev) => {
+  const a = ev.target.dataset?.accent;
+  if (!a) return;
+  accent = a;
+  applyAccent();
+  save();
+});
+
+load();
+const hash = location.hash.replace("#", "");
+if (["day","week","month","year"].includes(hash)) period = hash;
+el("goal").value = String(goal);
+updatePeriodButtons();
+applyAccent();
+if (Object.keys(stepsByDate).length > 0) {
+  el("source").textContent = `保存済みのデータ ・ ${Object.keys(stepsByDate).length} 日分`;
+}
+render();
+
+// 前に選んだフォルダがあれば読み直す。
+// 端末が steps.json を上書きしていれば、開くだけで最新になる。
+// 権限を求めるダイアログは勝手に出せないので、無言で失敗したら
+// 保存済みのデータをそのまま見せる（ボタンを押せば再取得できる）。
+loadDirHandle().then((handle) => {
+  if (handle) useDir(handle).catch(() => {});
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,13 @@
+{
+  "name": "steps-app-server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "bun test",
+    "start": "bun src/server.ts"
+  },
+  "dependencies": {
+    "hono": "^4.12.27"
+  }
+}

@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  共有画像を置く場所だけを開ける。
+  歩数の DB やバックアップ JSON は絶対に含めないこと。
+-->
+<paths>
+    <cache-path name="share" path="share/" />
+</paths>

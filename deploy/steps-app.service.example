@@ -1,0 +1,26 @@
+# steps-app のダッシュボードを常駐させる systemd user service。
+#
+#   sed -e "s|@HOME@|$HOME|g" -e "s|@USER@|$USER|g" \
+#       deploy/steps-app.service.example > ~/.config/systemd/user/steps-app.service
+#   systemctl --user daemon-reload && systemctl --user enable --now steps-app.service
+#
+# ※ サーバレスの Web ビューア(web/)を使うなら、このサービスは無くてもよい。
+
+[Unit]
+Description=steps-app dashboard
+After=network.target
+
+[Service]
+ExecStart=@HOME@/.bun/bin/bun @HOME@/steps-app/server/src/server.ts
+# systemd user service は対話シェルの PATH を引き継がない。
+# rclone を ~/.local/bin に置いている場合が多いので含めておく
+Environment=PATH=@HOME@/.bun/bin:@HOME@/.local/bin:/usr/local/bin:/usr/bin:/bin
+Environment=STEPS_PORT=8430
+Environment=STEPS_SYNC_SOURCE=drive
+Environment=STEPS_DRIVE_REMOTE=gdrive:steps-app
+Environment=STEPS_STAGING=@HOME@/steps-staging
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=default.target
