@@ -168,23 +168,72 @@ fun HomeScreen(
 
 @Composable
 private fun StatRow(state: HomeUiState, onOpenStreak: () -> Unit) {
-    Row(
+    Column(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceEvenly,
+        verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        // 連続日数をタップすると、いつ続いていつ切れたかを見られる
-        Stat(
-            "連続",
-            if (state.streak > 0) "${state.streak}日" else "—",
-            Modifier.clickable(onClick = onOpenStreak),
-        )
-        Stat(
-            "自己ベスト",
-            if (state.bestStreak > 0) "${state.bestStreak}日" else "—",
-            Modifier.clickable(onClick = onOpenStreak),
-        )
-        Stat("距離", "%.1f %s".format(state.distance, state.distanceUnit.suffix))
-        Stat("カロリー", state.calories?.let { "%.0f".format(it) } ?: "—")
+        // 連続と自己ベストは押すと記録の画面へ行ける。**囲って矢印を出す。**
+        // 数字が並んでいるだけでは、どれが押せるのか見て分からなかった
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            StatCard(
+                label = "連続",
+                value = if (state.streak > 0) "${state.streak}日" else "—",
+                // 今日を含んでいるのかどうかが数字だけでは分からない。
+                // 「1日」と出ていて今日が未達のときに、いちばん誤解を招く
+                note = if (isAchieved(state.todaySteps, state.goal)) "今日も達成" else "今日はまだ",
+                modifier = Modifier.weight(1f),
+                onClick = onOpenStreak,
+            )
+            StatCard(
+                label = "自己ベスト",
+                value = if (state.bestStreak > 0) "${state.bestStreak}日" else "—",
+                note = null,
+                modifier = Modifier.weight(1f),
+                onClick = onOpenStreak,
+            )
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceEvenly,
+        ) {
+            Stat("距離", "%.1f %s".format(state.distance, state.distanceUnit.suffix))
+            Stat("カロリー", state.calories?.let { "%.0f".format(it) } ?: "—")
+        }
+    }
+}
+
+/** 押すと先がある数字。囲いと矢印で「押せる」ことを見せる。 */
+@Composable
+private fun StatCard(
+    label: String,
+    value: String,
+    note: String?,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
+    Card(modifier = modifier.clickable(onClick = onClick)) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(label, style = MaterialTheme.typography.labelSmall)
+                Text(
+                    "›",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Text(value, style = MaterialTheme.typography.titleMedium)
+            note?.let {
+                Text(
+                    it,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
     }
 }
 
