@@ -17,6 +17,8 @@ import app.stepsapp.data.local.GoalHistoryEntity
 import app.stepsapp.data.local.StepsDatabase
 import app.stepsapp.domain.GoalHistory
 import app.stepsapp.domain.HourReading
+import app.stepsapp.domain.RecordKind
+import app.stepsapp.domain.Records
 import app.stepsapp.domain.HourlySteps
 import app.stepsapp.domain.GoalPeriod
 import app.stepsapp.domain.SensorState
@@ -27,6 +29,10 @@ import app.stepsapp.domain.checkHealth
 import app.stepsapp.domain.ChosenSteps
 import app.stepsapp.domain.chooseSteps
 import app.stepsapp.domain.hourlyFromReadings
+import app.stepsapp.domain.currentStreak
+import app.stepsapp.domain.longestStreak
+import app.stepsapp.domain.newRecordsToday
+import app.stepsapp.domain.records
 import app.stepsapp.domain.isDivergent
 import app.stepsapp.domain.pickWeight
 import app.stepsapp.domain.shouldReplaceDay
@@ -355,6 +361,41 @@ class StepsRepository private constructor(context: Context) {
                 )
             }
         return hourlyFromReadings(readings)
+    }
+
+    // --- 自己記録 ---
+
+    /** 全期間の記録。過去の自分と比べるための数字だけを持つ。 */
+    suspend fun records(): Records {
+        val all = dao.allDays().associate { it.localDate to it.stepCount }
+        return records(all, goalHistory())
+    }
+
+    /**
+     * 今日で自己記録を更新したか。
+     *
+     * **「今日を除いた過去の最高」と比べる。** 今日を含めて数えた最高と比べても、
+     * 自分自身と比較することになって永遠に更新されない。
+     */
+    suspend fun todaysNewRecords(): List<RecordKind> {
+        val today = today()
+        val all = dao.allDays().associate { it.localDate to it.stepCount }
+        val past = all - today
+        if (past.isEmpty()) return emptyList()
+
+        val goals = goalHistory()
+        return newRecordsToday(
+            previousBestDay = past.values.maxOrNull() ?: 0,
+            previousLongest = longestStreak(past, goals),
+            todaySteps = all[today] ?: 0,
+            streakIncludingToday = currentStreak(all, LocalDate.parse(today), goals),
+        )
+    }
+
+    /** 今日を含めた連続日数。通知の文面に使う。 */
+    suspend fun currentStreakToday(): Int {
+        val all = dao.allDays().associate { it.localDate to it.stepCount }
+        return currentStreak(all, LocalDate.parse(today()), goalHistory())
     }
 
     // --- 目標の履歴 ---

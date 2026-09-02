@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Card
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -28,9 +29,64 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import app.stepsapp.domain.CalendarMonth
 import app.stepsapp.domain.DayState
+import app.stepsapp.domain.Records
 import app.stepsapp.ui.theme.LocalAccentColors
 
 private val WEEKDAY = listOf("月", "火", "水", "木", "金", "土", "日")
+
+/**
+ * 自己記録。**過去の自分と比べる数字だけ**を並べる。
+ *
+ * 順位や平均との差は出さない。他人と比べる機能は作らない、という前提があるので、
+ * 比べる相手は常に「これまでの自分」になる。
+ *
+ * 週と月は平均で比べる。合計で比べると、記録が多い期間ほど有利になって
+ * 「よく歩いた週」ではなく「よく記録できた週」を選んでしまう。
+ */
+@Composable
+private fun RecordCard(records: Records) {
+    if (records.daysRecorded == 0) return
+
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Text("自己記録", style = MaterialTheme.typography.titleSmall)
+
+            records.bestDay?.let { RecordRow("1日の最高", "%,d 歩".format(it.value), it.on) }
+            records.bestWeek?.let {
+                RecordRow("週の最高平均", "%,d 歩".format(it.value), it.on?.let { d -> "${d}の週" })
+            }
+            records.bestMonth?.let { RecordRow("月の最高平均", "%,d 歩".format(it.value), it.on) }
+            if (records.longestStreak > 0) {
+                RecordRow("最長の連続", "${records.longestStreak} 日", null)
+            }
+            RecordRow("累計", "%,d 歩".format(records.total), "${records.daysRecorded}日ぶん")
+        }
+    }
+}
+
+@Composable
+private fun RecordRow(label: String, value: String, note: String?) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(label, style = MaterialTheme.typography.bodyMedium)
+        Column(horizontalAlignment = Alignment.End) {
+            Text(value, style = MaterialTheme.typography.bodyLarge)
+            note?.let {
+                Text(
+                    it,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
+}
 
 /**
  * 続いた日をカレンダーで見る。
@@ -59,6 +115,8 @@ fun StreakScreen(vm: StreakViewModel = viewModel()) {
             Stat(if (state.best > 0) "${state.best}日" else "—", "自己ベスト")
             Stat("${state.achieved}日", "達成した日")
         }
+
+        RecordCard(state.records)
 
         Legend()
 

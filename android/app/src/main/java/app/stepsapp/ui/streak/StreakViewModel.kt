@@ -8,11 +8,13 @@ import app.stepsapp.data.repository.StepsRepository
 import app.stepsapp.domain.CalendarMonth
 import app.stepsapp.domain.Goal
 import app.stepsapp.domain.GoalHistory
+import app.stepsapp.domain.Records
 import app.stepsapp.domain.StreakSpan
 import app.stepsapp.domain.achievedCount
 import app.stepsapp.domain.currentStreak
 import app.stepsapp.domain.longestSpan
 import app.stepsapp.domain.recentMonths
+import app.stepsapp.domain.records
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -30,6 +32,8 @@ data class StreakUiState(
     val months: List<CalendarMonth> = emptyList(),
     /** これ以上遡れるか */
     val canLoadMore: Boolean = true,
+    /** 自己記録。過去の自分と比べるための数字 */
+    val records: Records = Records.EMPTY,
 )
 
 class StreakViewModel(app: Application) : AndroidViewModel(app) {
@@ -75,6 +79,7 @@ class StreakViewModel(app: Application) : AndroidViewModel(app) {
         _state.value = withContext(Dispatchers.Default) {
             val span = longestSpan(stepsByDate, goals)
             val months = recentMonths(today, monthCount, stepsByDate, goals)
+            val allRecords = records(stepsByDate, goals)
             StreakUiState(
                 goal = goal,
                 current = currentStreak(stepsByDate, today, goals),
@@ -85,6 +90,7 @@ class StreakViewModel(app: Application) : AndroidViewModel(app) {
                 // 記録の最も古い月まで出したら、それ以上は遡っても空になる
                 canLoadMore = oldest != null &&
                     months.last().yearMonth.atDay(1).toString() > oldest,
+                records = allRecords,
             )
         }
     }

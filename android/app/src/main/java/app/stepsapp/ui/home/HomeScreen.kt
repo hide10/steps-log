@@ -52,6 +52,7 @@ import app.stepsapp.data.local.HealthConnectReader
 import app.stepsapp.domain.Bucket
 import app.stepsapp.domain.HourlySteps
 import app.stepsapp.domain.Period
+import app.stepsapp.domain.RecordKind
 import app.stepsapp.domain.busiestHoursText
 import app.stepsapp.domain.achievedRatio
 import app.stepsapp.domain.isAchieved
@@ -118,6 +119,11 @@ fun HomeScreen(
             )
 
             StatRow(state, onOpenStreak)
+
+            // 過去の自分を超えた日だけ出す。毎日出ると意味が薄れる
+            if (state.newRecords.isNotEmpty()) {
+                NewRecordBanner(state.newRecords)
+            }
 
             // 「今日のどこで歩いたか」は今日についてしか言えないので、日表示のときだけ出す
             if (state.period == Period.DAY && !state.hourly.isEmpty) {
@@ -224,6 +230,31 @@ private fun ComparisonLine(period: Period, diff: Double) {
         else -> "$unit の同じ時期とほぼ同じ"
     }
     Text(text, style = MaterialTheme.typography.bodyMedium)
+}
+
+/** 今日で自己記録を更新したことを伝える。 */
+@Composable
+private fun NewRecordBanner(kinds: List<RecordKind>) {
+    val accent = LocalAccentColors.current
+    val what = kinds.joinToString("と") {
+        when (it) {
+            RecordKind.BEST_DAY -> "1日の歩数"
+            RecordKind.LONGEST_STREAK -> "連続日数"
+        }
+    }
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text(
+                "自己新記録",
+                style = MaterialTheme.typography.titleSmall,
+                color = accent.primary,
+            )
+            Text(
+                "${what}の記録を更新しました",
+                style = MaterialTheme.typography.bodyMedium,
+            )
+        }
+    }
 }
 
 /**
