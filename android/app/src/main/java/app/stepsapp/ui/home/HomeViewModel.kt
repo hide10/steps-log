@@ -14,7 +14,7 @@ import app.stepsapp.domain.Period
 import app.stepsapp.domain.aggregate
 import app.stepsapp.domain.caloriesKcal
 import app.stepsapp.domain.compareAverages
-import app.stepsapp.domain.currentStreak
+import app.stepsapp.domain.currentStreakWithFreeze
 import app.stepsapp.domain.DistanceUnit
 import app.stepsapp.domain.displayDistance
 import app.stepsapp.domain.strideMetersOf
@@ -272,7 +272,9 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
         val c = withContext(Dispatchers.Default) {
             val latestSleep = sleepByDate.maxByOrNull { it.key }
             Computed(
-                streak = currentStreak(stepsByDate, today, goals),
+                // 連続の画面と同じ数え方にする（月2回まで守る）。
+                // ここだけ素の連続を出していて、画面によって数字が違っていた
+                streak = currentStreakWithFreeze(stepsByDate, today, goals).days,
                 bestStreak = longestStreak(stepsByDate, goals),
                 buckets = Period.entries.associateWith { aggregate(stepsByDate, it) },
                 comparisons = Period.entries.associateWith { comparisonFor(it, today) },
