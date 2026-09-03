@@ -30,6 +30,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import app.stepsapp.domain.CalendarMonth
 import app.stepsapp.domain.DayState
 import app.stepsapp.domain.Records
+import app.stepsapp.domain.YearRecord
 import app.stepsapp.ui.theme.LocalAccentColors
 
 private val WEEKDAY = listOf("月", "火", "水", "木", "金", "土", "日")
@@ -63,6 +64,37 @@ private fun RecordCard(records: Records) {
                 RecordRow("最長の連続", "${records.longestStreak} 日", null)
             }
             RecordRow("累計", "%,d 歩".format(records.total), "${records.daysRecorded}日ぶん")
+        }
+    }
+}
+
+/**
+ * 年ごとの記録。
+ *
+ * **自己記録がなぜその年に集中するのかを読めるようにするためのもの。**
+ * 1日の最高も月の最高平均も同じ年に固まることがあるが、それは
+ * その年に歩数が伸びたからで、古い年を見ていないわけではない。
+ *
+ * 平均の分母は記録がある日だけなので、日数も併せて出す。
+ * 使いはじめの年は記録が少なく、平均だけでは比べられない。
+ */
+@Composable
+private fun YearCard(years: List<YearRecord>) {
+    if (years.size < 2) return
+
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Text("年ごとの記録", style = MaterialTheme.typography.titleSmall)
+            years.forEach { y ->
+                RecordRow(
+                    label = "${y.year}年",
+                    value = "1日 %,d 歩".format(y.average),
+                    note = "最高 %,d 歩 / %d日の記録".format(y.best, y.daysRecorded),
+                )
+            }
         }
     }
 }
@@ -120,6 +152,8 @@ fun StreakScreen(
         }
 
         RecordCard(state.records)
+
+        YearCard(state.years)
 
         Legend()
 
