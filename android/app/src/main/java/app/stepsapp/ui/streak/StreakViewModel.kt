@@ -11,7 +11,8 @@ import app.stepsapp.domain.GoalHistory
 import app.stepsapp.domain.Records
 import app.stepsapp.domain.StreakSpan
 import app.stepsapp.domain.achievedCount
-import app.stepsapp.domain.currentStreak
+import app.stepsapp.domain.currentStreakWithFreeze
+import app.stepsapp.domain.freezesLeftThisMonth
 import app.stepsapp.domain.longestSpan
 import app.stepsapp.domain.recentMonths
 import app.stepsapp.domain.records
@@ -32,6 +33,10 @@ data class StreakUiState(
     val months: List<CalendarMonth> = emptyList(),
     /** これ以上遡れるか */
     val canLoadMore: Boolean = true,
+    /** 連続を守った日。カレンダーに印を出す */
+    val frozen: List<String> = emptyList(),
+    /** 今月あと何回守れるか */
+    val freezesLeft: Int = 0,
     /** 自己記録。過去の自分と比べるための数字 */
     val records: Records = Records.EMPTY,
 )
@@ -78,11 +83,13 @@ class StreakViewModel(app: Application) : AndroidViewModel(app) {
         // 同じ計算を2度3度呼ばないよう、いちど作って使い回す
         _state.value = withContext(Dispatchers.Default) {
             val span = longestSpan(stepsByDate, goals)
-            val months = recentMonths(today, monthCount, stepsByDate, goals)
+            // 連続は月に2回まで守る。守った日はカレンダーに印を出すので黙って埋めない
+            val streak = currentStreakWithFreeze(stepsByDate, today, goals)
+            val months = recentMonths(today, monthCount, stepsByDate, goals, streak.frozen.toSet())
             val allRecords = records(stepsByDate, goals)
             StreakUiState(
                 goal = goal,
-                current = currentStreak(stepsByDate, today, goals),
+                current = streak.days,
                 best = span?.days ?: 0,
                 achieved = achievedCount(stepsByDate, goals),
                 bestSpan = span,
@@ -91,6 +98,8 @@ class StreakViewModel(app: Application) : AndroidViewModel(app) {
                 canLoadMore = oldest != null &&
                     months.last().yearMonth.atDay(1).toString() > oldest,
                 records = allRecords,
+                frozen = streak.frozen,
+                freezesLeft = freezesLeftThisMonth(streak.frozen, today.toString().substring(0, 7)),
             )
         }
     }
