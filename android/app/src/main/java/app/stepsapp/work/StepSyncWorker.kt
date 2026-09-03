@@ -10,6 +10,8 @@ import app.stepsapp.data.repository.StepsRepository
 import app.stepsapp.data.local.PrefsStore
 import app.stepsapp.notify.GoalNotifier
 import app.stepsapp.notify.HealthNotifier
+import java.time.DayOfWeek
+import java.time.LocalDate
 import java.time.LocalTime
 import java.util.concurrent.TimeUnit
 
@@ -50,6 +52,12 @@ class StepSyncWorker(
                     today = today,
                 )
             }
+            // 週のまとめは月曜の朝に1回だけ。週が終わってから確定した数字を出す
+            val now = LocalTime.now()
+            if (LocalDate.now().dayOfWeek == DayOfWeek.MONDAY && now.hour >= WEEKLY_HOUR) {
+                repo.lastWeekReport()?.let { notifier.notifyWeekly(it) }
+            }
+
             Result.success()
         } catch (e: Exception) {
             // センサーが一時的に読めない程度なら次回に回収されるのでリトライで十分
@@ -58,6 +66,9 @@ class StepSyncWorker(
     }
 
     companion object {
+        /** 週のまとめを出し始める時刻。朝すぎると寝ている間に埋もれる */
+        private const val WEEKLY_HOUR = 8
+
         private const val UNIQUE_NAME = "step-sync"
 
         /** WorkManager が保証する最短間隔は15分。 */
