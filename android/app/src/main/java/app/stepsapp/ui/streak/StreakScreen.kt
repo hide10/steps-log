@@ -29,7 +29,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import app.stepsapp.domain.CalendarMonth
 import app.stepsapp.domain.DayState
-import app.stepsapp.domain.FREEZES_PER_MONTH
 import app.stepsapp.domain.Records
 import app.stepsapp.ui.theme.LocalAccentColors
 
@@ -131,14 +130,6 @@ fun StreakScreen(
                 onClick = { vm.loadMore() },
                 modifier = Modifier.fillMaxWidth(),
             ) { Text("もっと前を見る") }
-        }
-
-        if (state.frozen.isNotEmpty() || state.freezesLeft < FREEZES_PER_MONTH) {
-            Text(
-                "連続を守った日は${state.frozen.size}日（今月あと${state.freezesLeft}回）",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
         }
 
         state.bestSpan?.let { span ->
@@ -244,13 +235,10 @@ private fun colorFor(state: DayState): Color = when (state) {
     DayState.MISSED -> MaterialTheme.colorScheme.surfaceVariant
     // 未計測は「記録が無い」ことが伝わるよう、いちばん control を弱くする
     DayState.UNMEASURED -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
-    // 守った日は達成と同じ色にしない。**達成したことにはしない**ための区別
-    DayState.FROZEN -> LocalAccentColors.current.primary.copy(alpha = 0.35f)
 }
 
 private fun labelFor(state: DayState): String = when (state) {
     DayState.ACHIEVED -> "達成"
     DayState.MISSED -> "未達"
     DayState.UNMEASURED -> "未計測"
-    DayState.FROZEN -> "守った日"
 }
