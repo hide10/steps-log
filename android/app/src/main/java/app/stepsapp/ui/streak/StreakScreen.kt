@@ -98,11 +98,14 @@ private fun RecordRow(label: String, value: String, note: String?) {
  * 切れた日に何があったか思い出せる。
  */
 @Composable
-fun StreakScreen(vm: StreakViewModel = viewModel()) {
+fun StreakScreen(
+    modifier: Modifier = Modifier,
+    vm: StreakViewModel = viewModel(),
+) {
     val state by vm.state.collectAsStateWithLifecycle()
 
     Column(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 16.dp, vertical = 12.dp),
