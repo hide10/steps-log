@@ -10,7 +10,6 @@ import app.stepsapp.domain.Goal
 import app.stepsapp.domain.GoalHistory
 import app.stepsapp.domain.HourlySteps
 import app.stepsapp.domain.RecordKind
-import app.stepsapp.domain.VitalKind
 import app.stepsapp.domain.Period
 import app.stepsapp.domain.aggregate
 import app.stepsapp.domain.caloriesKcal
@@ -69,13 +68,6 @@ data class HomeUiState(
     val hourly: HourlySteps = HourlySteps.EMPTY,
     /** 今日で更新した自己記録。無ければ空 */
     val newRecords: List<RecordKind> = emptyList(),
-    /**
-     * 今日の活動時間（分）。記録が無ければ null。
-     *
-     * **Health Connect の運動セッションから来た値だけを使う。** 歩数から推定すると
-     * 実際とずれる（本家がここで不正確だと責められている）。
-     */
-    val activeMinutes: Long? = null,
     val weightTrend: Trend = Trend(emptyList(), null, null, null, null, null),
     val sleepTrend: Trend = Trend(emptyList(), null, null, null, null, null),
 )
@@ -162,14 +154,6 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
             repo.recentSleep(HISTORY_DAYS).collect { rows ->
                 sleepByDate = rows.associate { it.localDate to it.minutes }
                 recompute()
-            }
-        }
-        viewModelScope.launch {
-            repo.vitalsOn(repo.today()).collect { rows ->
-                val minutes = rows.firstOrNull { it.kind == VitalKind.EXERCISE_MINUTES.name }
-                _state.value = _state.value.copy(
-                    activeMinutes = minutes?.value?.let { Math.round(it) },
-                )
             }
         }
     }

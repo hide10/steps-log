@@ -3,6 +3,7 @@ package app.stepsapp.ui.backup
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -26,7 +27,10 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import app.stepsapp.domain.ImportMode
 
 @Composable
-fun BackupScreen(vm: BackupViewModel = viewModel()) {
+fun BackupScreen(
+    modifier: Modifier = Modifier,
+    vm: BackupViewModel = viewModel(),
+) {
     val state by vm.state.collectAsStateWithLifecycle()
 
     val saveJson = rememberLauncherForActivityResult(
@@ -41,11 +45,10 @@ fun BackupScreen(vm: BackupViewModel = viewModel()) {
         ActivityResultContracts.OpenDocument(),
     ) { uri -> uri?.let { vm.prepareImport(it) } }
 
-    Scaffold { padding ->
+    Box(modifier = modifier) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(padding)
                 .padding(24.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {

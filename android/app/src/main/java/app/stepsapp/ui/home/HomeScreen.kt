@@ -148,6 +148,11 @@ fun HomeScreen(
             }
             if (!state.permissionGranted) {
                 Warning("「身体活動」の権限が必要です")
+                // 一度「許可しない」を選ぶと、Android は二度目のダイアログを出さない。
+                // 文だけ残ると手詰まりになるので、設定への入口を必ず添える
+                OutlinedButton(onClick = { openAppSettings(context) }) {
+                    Text("設定を開いて許可する")
+                }
             }
             if (state.healthConnectAvailable && !state.healthConnectGranted) {
                 Text(
@@ -198,9 +203,6 @@ private fun StatRow(state: HomeUiState, onOpenStreak: () -> Unit) {
         ) {
             Stat("距離", "%.1f %s".format(state.distance, state.distanceUnit.suffix))
             Stat("カロリー", state.calories?.let { "%.0f".format(it) } ?: "—")
-            // 歩数から推定せず、Health Connect の運動セッションの値だけを出す。
-            // 記録が無い日は「—」。当てにならない数字を出すよりよい
-            Stat("活動時間", state.activeMinutes?.let { "$it 分" } ?: "—")
         }
     }
 }
@@ -511,6 +513,15 @@ private fun labelOf(period: Period, key: String): String = when (period) {
         "%s(%s)".format(key.substring(5), WEEKDAY[d.dayOfWeek.value - 1])
     }.getOrDefault(key)
     else -> key
+}
+
+/** アプリの「権限」設定を開く。ダイアログが出なくなったときの逃げ道。 */
+private fun openAppSettings(context: android.content.Context) {
+    val intent = android.content.Intent(
+        android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+        android.net.Uri.fromParts("package", context.packageName, null),
+    ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+    runCatching { context.startActivity(intent) }
 }
 
 @Composable

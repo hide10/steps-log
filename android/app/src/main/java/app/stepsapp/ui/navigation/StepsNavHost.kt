@@ -16,6 +16,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.NavHost
+import app.stepsapp.ui.common.BackBar
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
@@ -75,13 +76,25 @@ fun StepsNavHost() {
                     onOpenShare = { navController.navigate(Routes.SHARE) },
                 )
             }
-            composable(Routes.STREAK) { StreakScreen() }
+            composable(Routes.STREAK) {
+                BackBar("連続と記録", onBack = { navController.popBackStack() }) { m ->
+                    StreakScreen(modifier = m)
+                }
+            }
             composable(Routes.BODY) { BodyScreen() }
             composable(Routes.SETTINGS) {
                 SettingsScreen(onOpenBackup = { navController.navigate(Routes.BACKUP) })
             }
-            composable(Routes.BACKUP) { BackupScreen() }
-            composable(Routes.SHARE) { ShareScreen() }
+            composable(Routes.BACKUP) {
+                BackBar("バックアップ", onBack = { navController.popBackStack() }) { m ->
+                    BackupScreen(modifier = m)
+                }
+            }
+            composable(Routes.SHARE) {
+                BackBar("共有", onBack = { navController.popBackStack() }) { m ->
+                    ShareScreen(modifier = m)
+                }
+            }
         }
     }
 }

@@ -13,9 +13,6 @@ enum class DayState {
 
     /** 記録が無い。歩かなかったのではなく、測れていない */
     UNMEASURED,
-
-    /** 未達だったが「連続を守る」で切らなかった日。黙って埋めないための印 */
-    FROZEN,
 }
 
 /** カレンダーの1マス。空白のマスは [date] が null。 */
@@ -51,7 +48,6 @@ fun buildMonth(
     yearMonth: YearMonth,
     stepsByDate: Map<String, Long>,
     goals: GoalHistory,
-    frozen: Set<String> = emptySet(),
 ): CalendarMonth {
     val first = yearMonth.atDay(1)
     // dayOfWeek は月曜=1。月曜始まりにするので、そのまま引けばよい
@@ -61,10 +57,7 @@ fun buildMonth(
         repeat(leading) { add(CalendarCell(null, DayState.UNMEASURED)) }
         for (day in 1..yearMonth.lengthOfMonth()) {
             val date = yearMonth.atDay(day).toString()
-            val state =
-                if (date in frozen) DayState.FROZEN
-                else stateOf(stepsByDate[date], date, goals)
-            add(CalendarCell(yearMonth.atDay(day), state))
+            add(CalendarCell(yearMonth.atDay(day), stateOf(stepsByDate[date], date, goals)))
         }
     }
     return CalendarMonth(yearMonth, cells)
@@ -82,12 +75,9 @@ fun recentMonths(
     count: Int,
     stepsByDate: Map<String, Long>,
     goals: GoalHistory,
-    frozen: Set<String> = emptySet(),
 ): List<CalendarMonth> {
     val current = YearMonth.from(today)
-    return (0 until count).map {
-        buildMonth(current.minusMonths(it.toLong()), stepsByDate, goals, frozen)
-    }
+    return (0 until count).map { buildMonth(current.minusMonths(it.toLong()), stepsByDate, goals) }
 }
 
 fun recentMonths(
