@@ -79,9 +79,6 @@ class StepsRepository private constructor(context: Context) {
 
     fun recentVitals(days: Int): Flow<List<VitalEntity>> = dao.recentVitals(days)
 
-    /** その日の健康データ。ホームに活動時間を出すのに使う。 */
-    fun vitalsOn(date: String): Flow<List<VitalEntity>> = dao.vitalsOn(date)
-
     fun today(): String = LocalDate.now().toString()
 
     /** その日の採用値。記録が無ければ 0。 */

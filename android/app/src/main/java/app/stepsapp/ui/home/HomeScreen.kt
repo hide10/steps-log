@@ -198,9 +198,6 @@ private fun StatRow(state: HomeUiState, onOpenStreak: () -> Unit) {
         ) {
             Stat("距離", "%.1f %s".format(state.distance, state.distanceUnit.suffix))
             Stat("カロリー", state.calories?.let { "%.0f".format(it) } ?: "—")
-            // 歩数から推定せず、Health Connect の運動セッションの値だけを出す。
-            // 記録が無い日は「—」。当てにならない数字を出すよりよい
-            Stat("活動時間", state.activeMinutes?.let { "$it 分" } ?: "—")
         }
     }
 }
