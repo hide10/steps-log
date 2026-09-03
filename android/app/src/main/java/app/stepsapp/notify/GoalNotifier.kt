@@ -16,9 +16,11 @@ import app.stepsapp.domain.goalNoticeFor
 import app.stepsapp.domain.goalNoticeText
 import app.stepsapp.domain.RecordKind
 import app.stepsapp.domain.recordNoticeText
+import app.stepsapp.domain.WeeklyReport
+import app.stepsapp.domain.weeklyReportText
 
 /**
- * 目標の達成・「あと少し」・自己記録の更新を知らせる。
+ * 目標の達成・「あと少し」・自己記録の更新・週のまとめを知らせる。
  *
  * **同じ知らせは1日1回だけ。** 出した記録は日付ごとに持ち、日が変われば消える。
  * 計測異常の通知とはチャンネルを分けてある。片方だけ切りたい人がいるため。
@@ -96,6 +98,39 @@ class GoalNotifier(private val context: Context) {
         runCatching { manager.notify(RECORD_NOTIFICATION_ID, notification) }
     }
 
+    /**
+     * 先週のまとめを知らせる。
+     *
+     * **同じ週は1回だけ。** 週の月曜日を控えておき、それが変わったときだけ出す。
+     * 月曜の朝に出すのは、週が完全に終わってから確定した数字を見せるため。
+     */
+    fun notifyWeekly(report: WeeklyReport) {
+        val manager = NotificationManagerCompat.from(context)
+        if (!manager.areNotificationsEnabled()) return
+        if (prefs.getString(KEY_WEEKLY, "") == report.weekStart) return
+        prefs.edit().putString(KEY_WEEKLY, report.weekStart).apply()
+
+        ensureChannel()
+        val (title, body) = weeklyReportText(report)
+        val tapToOpen = PendingIntent.getActivity(
+            context,
+            0,
+            Intent(context, MainActivity::class.java),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+        )
+        val notification = NotificationCompat.Builder(context, CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_launcher_monochrome)
+            .setContentTitle(title)
+            .setContentText(body)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(body))
+            .setContentIntent(tapToOpen)
+            .setAutoCancel(true)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .build()
+
+        runCatching { manager.notify(WEEKLY_NOTIFICATION_ID, notification) }
+    }
+
     private fun recordsNotifiedOn(today: String): Set<String> {
         if (prefs.getString(KEY_RECORD_DATE, "") != today) return emptySet()
         return prefs.getStringSet(KEY_RECORD_DONE, emptySet()).orEmpty()
@@ -137,7 +172,7 @@ class GoalNotifier(private val context: Context) {
             // 邪魔にならないよう音は鳴らさない。見たときに気づけば十分
             NotificationManager.IMPORTANCE_LOW,
         ).apply {
-            description = "目標の達成、あと少し、自己記録の更新を知らせます"
+            description = "目標の達成、あと少し、自己記録の更新、週のまとめを知らせます"
         }
         manager.createNotificationChannel(channel)
     }
@@ -150,5 +185,7 @@ class GoalNotifier(private val context: Context) {
         private const val RECORD_NOTIFICATION_ID = 102
         private const val KEY_RECORD_DATE = "record_notice_date"
         private const val KEY_RECORD_DONE = "record_notice_done"
+        private const val WEEKLY_NOTIFICATION_ID = 103
+        private const val KEY_WEEKLY = "weekly_report_week"
     }
 }

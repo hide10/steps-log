@@ -33,6 +33,8 @@ import app.stepsapp.domain.currentStreak
 import app.stepsapp.domain.longestStreak
 import app.stepsapp.domain.newRecordsToday
 import app.stepsapp.domain.records
+import app.stepsapp.domain.WeeklyReport
+import app.stepsapp.domain.weeklyReport
 import app.stepsapp.domain.isDivergent
 import app.stepsapp.domain.pickWeight
 import app.stepsapp.domain.shouldReplaceDay
@@ -76,6 +78,9 @@ class StepsRepository private constructor(context: Context) {
     fun latestVitals(): Flow<List<VitalEntity>> = dao.latestVitals()
 
     fun recentVitals(days: Int): Flow<List<VitalEntity>> = dao.recentVitals(days)
+
+    /** その日の健康データ。ホームに活動時間を出すのに使う。 */
+    fun vitalsOn(date: String): Flow<List<VitalEntity>> = dao.vitalsOn(date)
 
     fun today(): String = LocalDate.now().toString()
 
@@ -390,6 +395,16 @@ class StepsRepository private constructor(context: Context) {
             todaySteps = all[today] ?: 0,
             streakIncludingToday = currentStreak(all, LocalDate.parse(today), goals),
         )
+    }
+
+    /**
+     * 先週のまとめ。記録が1日も無い週なら null。
+     *
+     * 月曜の朝に呼ぶ前提。週が完全に終わってから確定した数字を出す。
+     */
+    suspend fun lastWeekReport(): WeeklyReport? {
+        val all = dao.allDays().associate { it.localDate to it.stepCount }
+        return weeklyReport(all, LocalDate.parse(today()), goalHistory())
     }
 
     /** 今日を含めた連続日数。通知の文面に使う。 */
