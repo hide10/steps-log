@@ -9,6 +9,7 @@ import app.stepsapp.domain.Bucket
 import app.stepsapp.domain.Goal
 import app.stepsapp.domain.GoalHistory
 import app.stepsapp.domain.HourlySteps
+import app.stepsapp.domain.RecordKind
 import app.stepsapp.domain.Period
 import app.stepsapp.domain.aggregate
 import app.stepsapp.domain.caloriesKcal
@@ -65,6 +66,8 @@ data class HomeUiState(
     val sleepDate: String? = null,
     /** 今日の1時間ごとの歩数。「日」表示のときだけ使う */
     val hourly: HourlySteps = HourlySteps.EMPTY,
+    /** 今日で更新した自己記録。無ければ空 */
+    val newRecords: List<RecordKind> = emptyList(),
     val weightTrend: Trend = Trend(emptyList(), null, null, null, null, null),
     val sleepTrend: Trend = Trend(emptyList(), null, null, null, null, null),
 )
@@ -132,6 +135,7 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
             recompute()
         }
         loadHourly()
+        loadRecords()
         viewModelScope.launch {
             // 集計とストリークに全期間が要るので、直近数年ぶんをまとめて監視する
             repo.recentDays(HISTORY_DAYS).collect { days ->
@@ -213,6 +217,7 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
             } finally {
                 _state.value = _state.value.copy(syncing = false, today = repo.today())
                 loadHourly()
+                loadRecords()
             }
         }
     }
@@ -227,6 +232,17 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             val hourly = repo.hourlySteps(repo.today())
             _state.value = _state.value.copy(hourly = hourly)
+        }
+    }
+
+    /**
+     * 今日で自己記録を更新したかを見る。
+     *
+     * 記録は歩くたびに変わるので、同期のあとに読み直す。
+     */
+    private fun loadRecords() {
+        viewModelScope.launch {
+            _state.value = _state.value.copy(newRecords = repo.todaysNewRecords())
         }
     }
 

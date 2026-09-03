@@ -52,6 +52,7 @@ import app.stepsapp.data.local.HealthConnectReader
 import app.stepsapp.domain.Bucket
 import app.stepsapp.domain.HourlySteps
 import app.stepsapp.domain.Period
+import app.stepsapp.domain.RecordKind
 import app.stepsapp.domain.busiestHoursText
 import app.stepsapp.domain.achievedRatio
 import app.stepsapp.domain.isAchieved
@@ -119,6 +120,11 @@ fun HomeScreen(
 
             StatRow(state, onOpenStreak)
 
+            // 過去の自分を超えた日だけ出す。毎日出ると意味が薄れる
+            if (state.newRecords.isNotEmpty()) {
+                NewRecordBanner(state.newRecords)
+            }
+
             // 「今日のどこで歩いたか」は今日についてしか言えないので、日表示のときだけ出す
             if (state.period == Period.DAY && !state.hourly.isEmpty) {
                 HourlyChart(state.hourly)
@@ -162,23 +168,72 @@ fun HomeScreen(
 
 @Composable
 private fun StatRow(state: HomeUiState, onOpenStreak: () -> Unit) {
-    Row(
+    Column(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceEvenly,
+        verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        // 連続日数をタップすると、いつ続いていつ切れたかを見られる
-        Stat(
-            "連続",
-            if (state.streak > 0) "${state.streak}日" else "—",
-            Modifier.clickable(onClick = onOpenStreak),
-        )
-        Stat(
-            "自己ベスト",
-            if (state.bestStreak > 0) "${state.bestStreak}日" else "—",
-            Modifier.clickable(onClick = onOpenStreak),
-        )
-        Stat("距離", "%.1f %s".format(state.distance, state.distanceUnit.suffix))
-        Stat("カロリー", state.calories?.let { "%.0f".format(it) } ?: "—")
+        // 連続と自己ベストは押すと記録の画面へ行ける。**囲って矢印を出す。**
+        // 数字が並んでいるだけでは、どれが押せるのか見て分からなかった
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            StatCard(
+                label = "連続",
+                value = if (state.streak > 0) "${state.streak}日" else "—",
+                // 今日を含んでいるのかどうかが数字だけでは分からない。
+                // 「1日」と出ていて今日が未達のときに、いちばん誤解を招く
+                note = if (isAchieved(state.todaySteps, state.goal)) "今日も達成" else "今日はまだ",
+                modifier = Modifier.weight(1f),
+                onClick = onOpenStreak,
+            )
+            StatCard(
+                label = "自己ベスト",
+                value = if (state.bestStreak > 0) "${state.bestStreak}日" else "—",
+                note = null,
+                modifier = Modifier.weight(1f),
+                onClick = onOpenStreak,
+            )
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceEvenly,
+        ) {
+            Stat("距離", "%.1f %s".format(state.distance, state.distanceUnit.suffix))
+            Stat("カロリー", state.calories?.let { "%.0f".format(it) } ?: "—")
+        }
+    }
+}
+
+/** 押すと先がある数字。囲いと矢印で「押せる」ことを見せる。 */
+@Composable
+private fun StatCard(
+    label: String,
+    value: String,
+    note: String?,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
+    Card(modifier = modifier.clickable(onClick = onClick)) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(label, style = MaterialTheme.typography.labelSmall)
+                Text(
+                    "›",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Text(value, style = MaterialTheme.typography.titleMedium)
+            note?.let {
+                Text(
+                    it,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
     }
 }
 
@@ -224,6 +279,31 @@ private fun ComparisonLine(period: Period, diff: Double) {
         else -> "$unit の同じ時期とほぼ同じ"
     }
     Text(text, style = MaterialTheme.typography.bodyMedium)
+}
+
+/** 今日で自己記録を更新したことを伝える。 */
+@Composable
+private fun NewRecordBanner(kinds: List<RecordKind>) {
+    val accent = LocalAccentColors.current
+    val what = kinds.joinToString("と") {
+        when (it) {
+            RecordKind.BEST_DAY -> "1日の歩数"
+            RecordKind.LONGEST_STREAK -> "連続日数"
+        }
+    }
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text(
+                "自己新記録",
+                style = MaterialTheme.typography.titleSmall,
+                color = accent.primary,
+            )
+            Text(
+                "${what}の記録を更新しました",
+                style = MaterialTheme.typography.bodyMedium,
+            )
+        }
+    }
 }
 
 /**

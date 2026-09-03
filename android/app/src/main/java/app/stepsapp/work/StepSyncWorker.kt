@@ -32,12 +32,24 @@ class StepSyncWorker(
             HealthNotifier(applicationContext).notifyIfNeeded(repo.healthStatus())
             // 目標の進捗も知らせる（達成と「あと少し」を1日1回ずつ）
             val today = repo.today()
-            GoalNotifier(applicationContext).notifyIfNeeded(
-                steps = repo.stepsOn(today),
+            val notifier = GoalNotifier(applicationContext)
+            val todaySteps = repo.stepsOn(today)
+            notifier.notifyIfNeeded(
+                steps = todaySteps,
                 goal = PrefsStore.getInstance(applicationContext).goal,
                 today = today,
                 hourOfDay = LocalTime.now().hour,
             )
+            // 自己記録の更新も知らせる。過去の自分を超えたときだけ
+            val newRecords = repo.todaysNewRecords()
+            if (newRecords.isNotEmpty()) {
+                notifier.notifyRecords(
+                    kinds = newRecords,
+                    steps = todaySteps,
+                    streakDays = repo.currentStreakToday(),
+                    today = today,
+                )
+            }
             Result.success()
         } catch (e: Exception) {
             // センサーが一時的に読めない程度なら次回に回収されるのでリトライで十分
