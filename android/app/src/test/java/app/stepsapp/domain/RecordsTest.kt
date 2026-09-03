@@ -138,6 +138,34 @@ class RecordsTest {
         assertEquals(listOf(RecordKind.BEST_DAY, RecordKind.LONGEST_STREAK), kinds)
     }
 
+    // --- 年ごとの記録 ---
+
+    @Test
+    fun `年ごとに平均と最高と記録日数を出す`() {
+        val steps = mapOf(
+            "2025-01-01" to 3_000L,
+            "2025-01-02" to 5_000L,
+            "2026-01-01" to 10_000L,
+        )
+        val years = yearlyRecords(steps)
+        assertEquals(listOf("2026", "2025"), years.map { it.year })
+        assertEquals(4_000L, years[1].average)
+        assertEquals(5_000L, years[1].best)
+        assertEquals(2, years[1].daysRecorded)
+    }
+
+    @Test
+    fun `年の平均も分母は記録がある日だけ`() {
+        // 使いはじめの年は記録が少ない。365で割ると不当に低く出る
+        val steps = mapOf("2023-12-30" to 10_000L, "2023-12-31" to 20_000L)
+        assertEquals(15_000L, yearlyRecords(steps).single().average)
+    }
+
+    @Test
+    fun `年ごとの記録も記録が無ければ空`() {
+        assertTrue(yearlyRecords(emptyMap()).isEmpty())
+    }
+
     @Test
     fun `文言に数字が入る`() {
         assertEquals(

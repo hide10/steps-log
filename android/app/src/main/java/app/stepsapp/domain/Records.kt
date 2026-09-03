@@ -54,6 +54,44 @@ fun records(stepsByDate: Map<String, Long>, goals: GoalHistory): Records {
     )
 }
 
+/**
+ * 1年ぶんの記録。
+ *
+ * @param year         西暦4桁
+ * @param average      記録がある日だけを分母にした平均
+ * @param best         その年の1日の最高
+ * @param daysRecorded 記録がある日数。平均の分母がどれだけかを見せるために持つ
+ */
+data class YearRecord(
+    val year: String,
+    val average: Long,
+    val best: Long,
+    val daysRecorded: Int,
+)
+
+/**
+ * 年ごとの記録を新しい年から順に返す。
+ *
+ * **記録が一点に集中して見える理由を読めるようにするためのもの。**
+ * 1日の最高も月の最高平均も同じ年に固まることがあるが、それは
+ * その年に歩数が伸びたからで、古い年を見ていないわけではない。
+ *
+ * 平均の分母は記録がある日だけ（[aggregate] と同じ規則）。
+ * 使いはじめの年は記録日数が少ないので、日数も併せて見せる。
+ */
+fun yearlyRecords(stepsByDate: Map<String, Long>): List<YearRecord> =
+    stepsByDate.entries
+        .groupBy { it.key.substring(0, 4) }
+        .map { (year, days) ->
+            YearRecord(
+                year = year,
+                average = days.sumOf { it.value } / days.size,
+                best = days.maxOf { it.value },
+                daysRecorded = days.size,
+            )
+        }
+        .sortedByDescending { it.year }
+
 /** 更新された記録の種類。祝うときに何と言うかを決めるのに使う。 */
 enum class RecordKind {
     /** 1日の最高歩数 */

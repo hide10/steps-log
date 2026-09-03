@@ -9,6 +9,8 @@ import app.stepsapp.domain.CalendarMonth
 import app.stepsapp.domain.Goal
 import app.stepsapp.domain.GoalHistory
 import app.stepsapp.domain.Records
+import app.stepsapp.domain.YearRecord
+import app.stepsapp.domain.yearlyRecords
 import app.stepsapp.domain.StreakSpan
 import app.stepsapp.domain.achievedCount
 import app.stepsapp.domain.currentStreak
@@ -34,6 +36,8 @@ data class StreakUiState(
     val canLoadMore: Boolean = true,
     /** 自己記録。過去の自分と比べるための数字 */
     val records: Records = Records.EMPTY,
+    /** 年ごとの記録。新しい年が先頭 */
+    val years: List<YearRecord> = emptyList(),
 )
 
 class StreakViewModel(app: Application) : AndroidViewModel(app) {
@@ -80,6 +84,7 @@ class StreakViewModel(app: Application) : AndroidViewModel(app) {
             val span = longestSpan(stepsByDate, goals)
             val months = recentMonths(today, monthCount, stepsByDate, goals)
             val allRecords = records(stepsByDate, goals)
+            val byYear = yearlyRecords(stepsByDate)
             StreakUiState(
                 goal = goal,
                 current = currentStreak(stepsByDate, today, goals),
@@ -91,6 +96,7 @@ class StreakViewModel(app: Application) : AndroidViewModel(app) {
                 canLoadMore = oldest != null &&
                     months.last().yearMonth.atDay(1).toString() > oldest,
                 records = allRecords,
+                years = byYear,
             )
         }
     }
