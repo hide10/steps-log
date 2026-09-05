@@ -15,7 +15,8 @@ class HealthCheckTest {
         sensor: Boolean = true,
         hc: Boolean = true,
         lastAt: Long? = minutesAgo(10),
-    ) = checkHealth(permission, sensor, hc, lastAt, now)
+        attemptAt: Long? = minutesAgo(15),
+    ) = checkHealth(permission, sensor, hc, lastAt, attemptAt, now)
 
     @Test
     fun `全部そろって最近読めていれば問題なし`() {
@@ -53,32 +54,41 @@ class HealthCheckTest {
     }
 
     @Test
-    fun `しばらく記録が無ければ止まっているとみなす`() {
-        // 読み取りは15分間隔なので3時間空くのは明らかに異常
-        val s = check(lastAt = minutesAgo(200))
+    fun `読み取りが長く動いていなければ止まっているとみなす`() {
+        // 15分間隔のはずのジョブが半日動いていないのは明らかに異常
+        val s = check(lastAt = minutesAgo(800), attemptAt = minutesAgo(800))
         assertEquals(Health.STALE, s.health)
         assertTrue(s.isProblem)
-        assertEquals(200L, s.minutesSinceLastReading)
+        assertEquals(800L, s.minutesSinceLastReading)
     }
 
     @Test
     fun `しきい値のすぐ手前では警告しない`() {
-        assertEquals(Health.OK, check(lastAt = minutesAgo(179)).health)
-        assertEquals(Health.STALE, check(lastAt = minutesAgo(180)).health)
+        assertEquals(Health.OK, check(attemptAt = minutesAgo(719)).health)
+        assertEquals(Health.STALE, check(attemptAt = minutesAgo(720)).health)
     }
 
     @Test
-    fun `一度も記録できていなければ止まっている扱い`() {
-        val s = check(lastAt = null)
-        assertEquals(Health.STALE, s.health)
+    fun `まだ一度も動いていなければ次の実行を待つ`() {
+        // 入れた直後。ジョブが回る前に警告しても利用者にできることはない
+        val s = check(lastAt = null, attemptAt = null)
+        assertEquals(Health.OK, s.health)
         assertEquals(null, s.minutesSinceLastReading)
     }
 
     @Test
-    fun `夜間に数時間動かない程度で誤警告しない`() {
-        // 端末を置いて寝ているだけなら、ワーカーは動いて記録は入る。
-        // しきい値は「記録が無い」ことを見ているので歩数0でも警告しない
-        assertEquals(Health.OK, check(lastAt = minutesAgo(30)).health)
+    fun `朝一でまだ歩いていなくても警告しない`() {
+        // 歩数センサーは on-change なので、歩かなければ記録は増えない。
+        // 寝ている間ぶん記録が空いていても、読み取りが動いていれば正常
+        val s = check(lastAt = minutesAgo(600), attemptAt = minutesAgo(15))
+        assertEquals(Health.OK, s.health)
+        assertEquals(600L, s.minutesSinceLastReading)
+    }
+
+    @Test
+    fun `Doze で数時間ずれる程度では誤警告しない`() {
+        // 深い Doze だと定期実行は最大6時間おきのメンテナンス窓まで先送りされる
+        assertEquals(Health.OK, check(lastAt = minutesAgo(400), attemptAt = minutesAgo(400)).health)
     }
 
     @Test

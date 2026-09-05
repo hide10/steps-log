@@ -48,7 +48,7 @@ class HealthNotifier(private val context: Context) {
 
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_launcher_monochrome)
-            .setContentTitle("歩数を記録できていません")
+            .setContentTitle("歩数を読み取れていません")
             .setContentText(adviceFor(status.health))
             .setStyle(NotificationCompat.BigTextStyle().bigText(adviceFor(status.health)))
             .setContentIntent(tapToOpen)
@@ -67,7 +67,7 @@ class HealthNotifier(private val context: Context) {
             "計測の異常",
             NotificationManager.IMPORTANCE_DEFAULT,
         ).apply {
-            description = "歩数を記録できていないときに知らせます"
+            description = "歩数を読み取れていないときに知らせます"
         }
         manager.createNotificationChannel(channel)
     }

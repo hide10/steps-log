@@ -12,15 +12,16 @@
 `gh` コマンド全般(issue / pr / repo / api)は必ず Haiku サブエージェントに委譲する
 (`github-haiku` スキル)。git のローカル操作(commit / branch / merge)はメインが行う。
 
-## 定型作業: Windows 側へのファイルコピー
+## 定型作業: 実機への反映
 
-開発は WSL2、実機デバッグは Windows 側 Android Studio という分業。
-WSL2 側でできるのは `assembleDebug` / `test` によるビルド検証まで。
+コード変更が終わったら `./dev.sh` を実行する。ビルド → テスト → 実機への
+install -r まで通る。**ビルドが新しくなったら実機にも入れ直すこと**
+(毎日使って気づいたことを次の改善に回すため)。
 
-- **WSL2 ソース**: `<このリポジトリ>/android/app/src/`
-- **Windows 先**: `/mnt/c/Users/<あなた>/projects/steps-app-android/app/src/`
-
-コード変更の完了時に、変更ファイルのコピーを提案すること。
+WSL2 で開発する場合、adb は Windows 側のバイナリを呼べばよく、
+ソースを Windows 側へコピーする必要は無い。以前は「実機デバッグは
+Windows の Android Studio」という分業でコピーしていたが、
+WSL2 から実機に入れられるので不要(2026-09-06 に廃止)。
 
 ## 端末側の初回セットアップ
 

@@ -19,7 +19,7 @@ enum class Health {
     /** どのソースからも読めていない */
     NO_SOURCE,
 
-    /** 権限もソースもあるのに、しばらく記録が増えていない */
+    /** 権限もソースもあるのに、読み取りそのものが動いていない */
     STALE,
 }
 
@@ -34,22 +34,33 @@ data class HealthStatus(
 /**
  * 計測が正常に回っているかを判定する。副作用を持たない純粋関数。
  *
+ * **「記録が増えていない」ことを異常の根拠にしてはいけない。**
+ * TYPE_STEP_COUNTER は on-change センサーで、歩数が変わらないとイベントを
+ * 返さないことがある（[app.stepsapp.data.local.StepCounterReader] 参照）。
+ * つまり生ログの最終時刻は実質「最後に歩いた時刻」であり、寝ている間と
+ * 朝の未歩行だけで数時間空く。かつてこれで「朝一に必ず警告が出る」という
+ * 誤警告を起こした。見るべきは**読み取りに行けているか**であって、
+ * その結果として歩数があったかどうかではない。
+ *
  * @param hasActivityPermission ACTIVITY_RECOGNITION が許可されているか
  * @param sensorAvailable       歩数センサーがある端末か
  * @param healthConnectGranted  Health Connect から読めるか
- * @param lastReadingAt         最後に生ログを記録できた時刻(epoch millis)。無ければ null
+ * @param lastReadingAt         最後に生ログを記録できた時刻(epoch millis)。表示用で判定には使わない
+ * @param lastAttemptAt         前回ワーカーが読み取りに動いた時刻(epoch millis)。未実行なら null
  * @param now                   現在時刻
- * @param staleAfterMinutes     これだけ記録が無ければ止まっているとみなす
+ * @param staleAfterMinutes     これだけ読み取りが動いていなければ止まっているとみなす
  */
 fun checkHealth(
     hasActivityPermission: Boolean,
     sensorAvailable: Boolean,
     healthConnectGranted: Boolean,
     lastReadingAt: Long?,
+    lastAttemptAt: Long?,
     now: Long,
     staleAfterMinutes: Long = STALE_AFTER_MINUTES,
 ): HealthStatus {
     val elapsed = lastReadingAt?.let { (now - it) / 60_000 }
+    val sinceAttempt = lastAttemptAt?.let { (now - it) / 60_000 }
 
     // センサーが無い端末でも Health Connect があれば読めるので、
     // 「センサーが無い」だけでは問題としない
@@ -61,8 +72,9 @@ fun checkHealth(
         !canReadSensor && !healthConnectGranted ->
             HealthStatus(Health.NO_SOURCE, elapsed)
 
-        // 一度も記録できていない、または長く途絶えている
-        elapsed == null || elapsed >= staleAfterMinutes ->
+        // 読み取り自体が長く動いていない。省電力でワーカーが殺された疑いが濃い。
+        // 一度も動いていない(null)場合は入れたばかりなので、次の実行を待てばよい
+        sinceAttempt != null && sinceAttempt >= staleAfterMinutes ->
             HealthStatus(Health.STALE, elapsed)
 
         else -> HealthStatus(Health.OK, elapsed)
@@ -70,10 +82,12 @@ fun checkHealth(
 }
 
 /**
- * 3時間。読み取りは15分間隔なので、これだけ空くのは明らかに異常。
- * 短すぎると（端末を置いて寝ているだけで）誤警告になるため余裕を持たせる。
+ * 12時間。読み取りは15分間隔だが、Doze に入ると定期実行は
+ * メンテナンス窓（深い Doze では最大6時間おき）まで先送りされる。
+ * これは正常な挙動なので、数時間の飛びで警告してはいけない。
+ * 半日ぶん一度も動かないのは、省電力にアプリごと止められているとみてよい。
  */
-const val STALE_AFTER_MINUTES = 180L
+const val STALE_AFTER_MINUTES = 720L
 
 /** 利用者に何をすればよいか伝える。原因ごとに対処が違う。 */
 fun adviceFor(health: Health): String = when (health) {
@@ -83,6 +97,6 @@ fun adviceFor(health: Health): String = when (health) {
     Health.NO_SOURCE ->
         "歩数を読み取れる手段がありません。Health Connect を許可してください"
     Health.STALE ->
-        "しばらく歩数を記録できていません。" +
+        "しばらく歩数を読み取れていません。" +
             "バッテリー使用量が「制限なし」になっているか確認してください"
 }
