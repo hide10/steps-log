@@ -34,14 +34,28 @@ data class SensorUpdate(
 /**
  * センサーの読み取り値を状態に適用する。副作用を持たない純粋関数。
  *
- * 日をまたいだ分の歩数は分割できないため、**前日に寄せる**。
- * 読み取りは 15 分間隔なので誤差は最大でも 15 分程度の歩行分に収まる。
+ * 日をまたいだ分の歩数は分割できない。前回の読み取りから間もなければ
+ * **前日に寄せる**（ずれても [MAX_CARRY_OVER_MS] ぶんの歩行に収まる）。
  *
- * @param state   直前の状態。初回は null
- * @param reading センサーの現在の累積値
- * @param date    いま読み取った時点の暦日 (YYYY-MM-DD、端末ローカル)
+ * **長く空いた日跨ぎの差分は、どの日にも入れない。** 何日ぶんの歩数が
+ * 混ざっているか分からないので、前日に寄せると歩いていない日に歩数が付き、
+ * 歩いた日は0から数え直しになる。
+ *
+ * 実機で踏んだ例（2026-09-14）: バックグラウンドからはセンサーが読めず
+ * （OS の sensor access restriction）、12日の朝から14日の昼にアプリを開くまで
+ * 読み取りが途切れた。その間の 9,650 歩が全部12日に入り、14日は 4,130 歩になった。
+ *
+ * @param state     直前の状態。初回は null
+ * @param reading   センサーの現在の累積値
+ * @param date      いま読み取った時点の暦日 (YYYY-MM-DD、端末ローカル)
+ * @param elapsedMs 前回の読み取りからの経過時間。分からなければ null（長く空いたとみなす）
  */
-fun applyReading(state: SensorState?, reading: Long, date: String): SensorUpdate {
+fun applyReading(
+    state: SensorState?,
+    reading: Long,
+    date: String,
+    elapsedMs: Long? = null,
+): SensorUpdate {
     require(reading >= 0) { "センサーの累積値が負: $reading" }
 
     // 初回。この時点より前の歩数は取得しようがないので 0 から始める。
@@ -65,6 +79,14 @@ fun applyReading(state: SensorState?, reading: Long, date: String): SensorUpdate
             dayTotals = mapOf(date to acc),
             rebootDetected = rebooted,
         )
+    } else if (elapsedMs == null || elapsedMs > MAX_CARRY_OVER_MS) {
+        // 長く空いた日跨ぎ: 差分の内訳が分からないので捨て、新しい日は 0 から始める。
+        // 取りこぼした分は Health Connect の読み直しで埋まる
+        SensorUpdate(
+            newState = SensorState(baseReading = reading, baseDate = date, accumulated = 0),
+            dayTotals = mapOf(date to 0L),
+            rebootDetected = rebooted,
+        )
     } else {
         // 日跨ぎ: 差分は前日に寄せて確定させ、新しい日は 0 から始める。
         val previousTotal = state.accumulated + delta
@@ -75,3 +97,6 @@ fun applyReading(state: SensorState?, reading: Long, date: String): SensorUpdate
         )
     }
 }
+
+/** 日跨ぎの差分を前日に寄せてよい、前回の読み取りからの経過時間の上限。 */
+const val MAX_CARRY_OVER_MS: Long = 60 * 60 * 1000L

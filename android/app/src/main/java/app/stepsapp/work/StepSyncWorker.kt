@@ -18,8 +18,9 @@ import java.util.concurrent.TimeUnit
 /**
  * 定期的に歩数センサーを読んで日次歩数へ反映するワーカー。
  *
- * Foreground Service は使わない。TYPE_STEP_COUNTER はハードウェアカウンタで
- * Doze 中も数え続けているため、たまに起きて読むだけで取りこぼしが起きない。
+ * Foreground Service は使わない。ただしバックグラウンドからはセンサーのイベントが
+ * OS に止められ（sensor access restriction）、センサーを実際に読めるのはアプリを開いたときだけ。
+ * バックグラウンドの記録は Health Connect の読み取りが担っている。
  */
 class StepSyncWorker(
     context: Context,

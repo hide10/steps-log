@@ -285,5 +285,13 @@ gh release create v1.2.0 --target main --title "v1.2.0" --notes-file <ノート>
      → 「もっと見る」で少しずつ足す
   `currentStreak()` が遡るたびに全キーを走査していた（二乗）のも直した。
   **画面に出す量と計算量は、記録の増加に引きずられないようにすること。**
+- **歩数センサーはバックグラウンドから読めない。**（2026-09-15）
+  ワーカーの読み取りは OS の sensor access restriction で止められ、
+  センサーの値はアプリを開いたときしか取れていなかった。その状態で
+  「日跨ぎの差分は前日に寄せる」作りだったため、12日の朝から14日の昼まで
+  読めなかった 9,650 歩が全部12日に入り、14日は 4,130 歩になった。
+  長く空いた日跨ぎの差分は捨て、Health Connect を直近7日ぶん毎回読み直す形にした。
+  **FGS を使わない方針の前提（たまに起きて読めば取りこぼさない）は崩れている。**
+  確かめるときは `dumpsys sensorservice` の `StepCounterReader` の Active Time を見る
 - locapin（別プロジェクト）は `keystore.properties` と `*.jks` が git 管理下に入っている。
   **steps-app では最初のコミットから .gitignore 済み。同じ轍を踏まないこと**

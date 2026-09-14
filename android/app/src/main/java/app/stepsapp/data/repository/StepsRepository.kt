@@ -124,11 +124,12 @@ class StepsRepository private constructor(context: Context) {
         val date = today()
 
         val sensorTotals = readSensor(date, now)
-        val hcSteps = readHealthConnect(date, now)
+        val hcByDay = readHealthConnect(date, now)
 
-        // センサー由来で更新が必要な日（日跨ぎの場合は前日も含む）
+        // 更新が必要な日（センサーの日跨ぎぶんと、Health Connect で読み直した直近の日）
         val days = buildSet {
             addAll(sensorTotals.keys)
+            addAll(hcByDay.keys)
             add(date)
         }
 
@@ -139,8 +140,7 @@ class StepsRepository private constructor(context: Context) {
 
         var applied = false
         for (day in days) {
-            // Health Connect の値は当日ぶんしか読んでいないので、他の日はセンサーのみで判断する
-            val hcForDay = if (day == date) hcSteps else null
+            val hcForDay = hcByDay[day]
             val sensorForDay = sensorTotals[day]
 
             if (day == date && isDivergent(hcForDay, sensorForDay)) {
@@ -239,6 +239,8 @@ class StepsRepository private constructor(context: Context) {
         }
 
         val stored = dao.sensorState()
+        // 前回センサーを読めてからの経過時間。今回ぶんを書き込む前に取る
+        val elapsed = dao.lastSensorReadingAt()?.let { now - it }
         val previous = stored?.let {
             SensorState(
                 baseReading = it.baseReading,
@@ -247,7 +249,7 @@ class StepsRepository private constructor(context: Context) {
             )
         }
 
-        val update = applyReading(previous, reading, date)
+        val update = applyReading(previous, reading, date, elapsed)
         if (update.rebootDetected) {
             Log.i(TAG, "端末の再起動を検知したためオフセットを打ち直した")
         }
@@ -320,9 +322,19 @@ class StepsRepository private constructor(context: Context) {
         }.onFailure { Log.w(TAG, "過去データの取り込みに失敗した", it) }
     }
 
-    /** Health Connect から当日の歩数を読む。取れなければ null。 */
-    private suspend fun readHealthConnect(date: String, now: Long): Long? {
-        val steps = healthConnect.readDay(LocalDate.parse(date)) ?: return null
+    /**
+     * Health Connect から**直近数日ぶん**の歩数を読む。読めなかった日は含まれない。
+     *
+     * **当日だけ読むと、あとから届いた分を取りこぼす。** Health Connect に書く側の
+     * 同期が遅れると、日付が変わってから前日の歩数が増えることがある。
+     * 読み直しても [shouldReplaceDay] を通すので、減る方向には書き換わらない。
+     *
+     * 生ログは当日ぶんだけ残す。過去の日は訂正なので、取り込み（backfill）と同じ扱い。
+     */
+    private suspend fun readHealthConnect(date: String, now: Long): Map<String, Long> {
+        val today = LocalDate.parse(date)
+        val byDay = healthConnect.readRange(today.minusDays(RECENT_DAYS), today)
+        val steps = byDay[date] ?: return byDay
         dao.insertRaw(
             StepReadingRawEntity(
                 localDate = date,
@@ -331,7 +343,7 @@ class StepsRepository private constructor(context: Context) {
                 recordedAt = now,
             ),
         )
-        return steps
+        return byDay
     }
 
     /**
@@ -474,6 +486,9 @@ class StepsRepository private constructor(context: Context) {
 
         /** 履歴権限があるときに遡る日数。約3年。 */
         private const val HISTORY_LOOKBACK_DAYS = 1100L
+
+        /** 毎回 Health Connect から読み直す、今日より前の日数。遅れて届いた分を拾う。 */
+        private const val RECENT_DAYS = 6L
 
         @Volatile
         private var instance: StepsRepository? = null

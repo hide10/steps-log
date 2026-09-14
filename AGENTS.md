@@ -59,6 +59,14 @@ user-selected apps priorities"）。したがって `dataOriginFilter` で
 常駐サービスは構造的に不要。WorkManager の定期実行(15分間隔)で読み出す。
 
 - 再起動でセンサーの累積値がリセットされる → `今回値 < 前回値` で再起動を検知しオフセットを打ち直す
+
+> **ただし「数え続ける」と「バックグラウンドから読める」は別。**（2026-09-15 判明）
+> Pixel 11 Pro では、ワーカーからの `registerListener` が
+> `Suspended ... due to sensor access restriction` で止められ、イベントが来ない
+> （`dumpsys sensorservice` で確認。アプリを開いているときの読み取りは Active 100%）。
+> つまり**センサーの値はアプリを開いたときしか取れず、読み取りは何日も空きうる。**
+> バックグラウンドの記録は実質 Health Connect が担っている。
+> 長く空いた日跨ぎの差分はどの日にも入れない（`applyReading` の `elapsedMs`）。
 - `BOOT_COMPLETED` で WorkManager を組み直し、基準値を再初期化する
 
 ### データの持ち方
