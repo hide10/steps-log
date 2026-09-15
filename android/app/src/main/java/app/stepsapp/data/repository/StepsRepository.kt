@@ -24,6 +24,7 @@ import app.stepsapp.domain.GoalPeriod
 import app.stepsapp.domain.SensorState
 import app.stepsapp.domain.StepSource
 import app.stepsapp.domain.applyReading
+import app.stepsapp.domain.applyLiveReading
 import app.stepsapp.domain.HealthStatus
 import app.stepsapp.domain.checkHealth
 import app.stepsapp.domain.ChosenSteps
@@ -40,6 +41,8 @@ import app.stepsapp.domain.pickWeight
 import app.stepsapp.domain.shouldReplaceDay
 import app.stepsapp.domain.totalSleepMinutes
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -57,6 +60,10 @@ class StepsRepository private constructor(context: Context) {
     private val prefs = app.stepsapp.data.local.PrefsStore.getInstance(context)
     private val sensorReader = StepCounterReader(context)
     private val healthConnect = HealthConnectReader(context)
+
+    // ワーカーと常駐サービスが同時に書くので、読んでから書き戻すまでを排他にする
+    private val sensorLock = Mutex()
+    private val dayLock = Mutex()
 
     fun sensorAvailable(): Boolean = sensorReader.isAvailable()
 
@@ -149,31 +156,38 @@ class StepsRepository private constructor(context: Context) {
 
             val chosen = chooseSteps(healthConnect = hcForDay, sensor = sensorForDay) ?: continue
 
-            val existing = dao.findDay(day)
-            // 歩数は1日のなかで減らない。減る方向の上書きは
-            // 「信頼できるソースが一時的に読めなかった」ことを意味するので拒否する。
-            if (!shouldReplaceDay(
-                    existingCount = existing?.stepCount,
-                    existingSource = existing?.source?.let { StepSource.from(it) },
-                    incoming = chosen,
-                )
-            ) {
-                applied = true
-                continue
-            }
-
-            dao.upsertDay(
-                DailyStepEntity(
-                    localDate = day,
-                    stepCount = chosen.stepCount,
-                    source = chosen.source.name,
-                    updatedAt = now,
-                    syncedAt = null,
-                ),
-            )
+            applyDay(day, chosen, now)
             applied = true
         }
         return applied
+    }
+
+    /**
+     * その日の採用値を書き込む。**歩数は1日のなかで減らない**ので、
+     * 減る方向の上書きは「信頼できるソースが一時的に読めなかった」ことを意味し、拒否する。
+     *
+     * 読んでから書くまでを排他にする。ワーカーと常駐サービスが挟まると、
+     * 大きい値を読んだあとに小さい値で上書きしてしまう。
+     */
+    private suspend fun applyDay(day: String, chosen: ChosenSteps, now: Long) = dayLock.withLock {
+        val existing = dao.findDay(day)
+        if (!shouldReplaceDay(
+                existingCount = existing?.stepCount,
+                existingSource = existing?.source?.let { StepSource.from(it) },
+                incoming = chosen,
+            )
+        ) {
+            return@withLock
+        }
+        dao.upsertDay(
+            DailyStepEntity(
+                localDate = day,
+                stepCount = chosen.stepCount,
+                source = chosen.source.name,
+                updatedAt = now,
+                syncedAt = null,
+            ),
+        )
     }
 
     /**
@@ -237,11 +251,34 @@ class StepsRepository private constructor(context: Context) {
             Log.w(TAG, "歩数センサーを読めなかった（今回はスキップ）")
             return emptyMap()
         }
+        return advanceSensor(reading, date, now, live = false)
+    }
 
-        val stored = dao.sensorState()
-        // 前回センサーを読めてからの経過時間。今回ぶんを書き込む前に取る
-        val elapsed = dao.lastSensorReadingAt()?.let { now - it }
-        val previous = stored?.let {
+    /**
+     * 常駐サービスが受け取ったセンサーの値を記録する。
+     *
+     * @param resumed 常駐を始めて最初の値か。止まっていた間の差分を含むので、
+     *                日跨ぎは [applyReading] の規則（長く空いていたら捨てる）で扱う
+     */
+    suspend fun recordLiveReading(reading: Long, date: String, at: Long, resumed: Boolean) {
+        val totals = advanceSensor(reading, date, at, live = !resumed)
+        for ((day, steps) in totals) {
+            applyDay(day, ChosenSteps(StepSource.SENSOR, steps), at)
+        }
+    }
+
+    /**
+     * センサーの状態を進めて生ログに残し、「日付 -> その日の歩数」を返す。
+     *
+     * @param live 常駐して受け取り続けている値か。日跨ぎの振り分けが変わる
+     */
+    private suspend fun advanceSensor(
+        reading: Long,
+        date: String,
+        now: Long,
+        live: Boolean,
+    ): Map<String, Long> = sensorLock.withLock {
+        val previous = dao.sensorState()?.let {
             SensorState(
                 baseReading = it.baseReading,
                 baseDate = it.baseDate,
@@ -249,7 +286,13 @@ class StepsRepository private constructor(context: Context) {
             )
         }
 
-        val update = applyReading(previous, reading, date, elapsed)
+        val update = if (live && previous != null) {
+            applyLiveReading(previous, reading, date)
+        } else {
+            // 前回センサーを読めてからの経過時間。今回ぶんを書き込む前に取る
+            val elapsed = dao.lastSensorReadingAt()?.let { now - it }
+            applyReading(previous, reading, date, elapsed)
+        }
         if (update.rebootDetected) {
             Log.i(TAG, "端末の再起動を検知したためオフセットを打ち直した")
         }
@@ -269,7 +312,7 @@ class StepsRepository private constructor(context: Context) {
                 accumulated = update.newState.accumulated,
             ),
         )
-        return update.dayTotals
+        update.dayTotals
     }
 
     /**

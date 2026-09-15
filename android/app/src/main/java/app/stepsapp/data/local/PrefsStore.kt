@@ -143,6 +143,16 @@ class PrefsStore private constructor(context: Context) {
         prefs.edit().putBoolean(KEY_BACKFILL, false).apply()
     }
 
+    /**
+     * 常駐して歩数センサーを受け取り続けるか。既定はオン。
+     *
+     * **バックグラウンドからはセンサーを読めない**（OS の sensor access restriction）。
+     * オフにすると、アプリを閉じている間の歩数は Health Connect の値だけになる。
+     */
+    var liveCounting: Boolean
+        get() = prefs.getBoolean(KEY_LIVE, true)
+        set(value) = prefs.edit().putBoolean(KEY_LIVE, value).apply()
+
     /** 初回セットアップを終えたか。終わっていなければ起動時に案内を出す。 */
     var setupDone: Boolean
         get() = prefs.getBoolean(KEY_SETUP, false)
@@ -150,6 +160,7 @@ class PrefsStore private constructor(context: Context) {
 
     companion object {
         private const val KEY_SETUP = "setup_done"
+        private const val KEY_LIVE = "live_counting"
         private const val KEY_BACKFILL = "backfill_done"
         private const val KEY_DIST_UNIT = "distance_unit"
         private const val KEY_HEIGHT_UNIT = "height_unit"

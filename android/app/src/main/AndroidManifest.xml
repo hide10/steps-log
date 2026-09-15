@@ -10,9 +10,13 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- 端末再起動後に WorkManager を組み直し、センサーの基準値を打ち直すため -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!-- 歩数センサーを常駐して受け取るため。バックグラウンドからはセンサーを読めない
+         （OS の sensor access restriction）ので health 型の Foreground Service で動かす -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_HEALTH" />
 
     <!-- Health Connect から歩数を読む。バックグラウンド読み取りは
-         WorkManager から読むために必要（Foreground Service は使わない） -->
+         WorkManager から読むために必要 -->
     <uses-permission android:name="android.permission.health.READ_STEPS" />
     <!-- 体重・睡眠も自分の手元に持つため（拒否されても歩数の記録は動き続ける） -->
     <uses-permission android:name="android.permission.health.READ_WEIGHT" />
@@ -122,6 +126,11 @@
                 android:name="android.appwidget.provider"
                 android:resource="@xml/widget_month" />
         </receiver>
+
+        <service
+            android:name=".live.StepCountingService"
+            android:exported="false"
+            android:foregroundServiceType="health" />
 
         <receiver
             android:name=".work.BootCompletedReceiver"

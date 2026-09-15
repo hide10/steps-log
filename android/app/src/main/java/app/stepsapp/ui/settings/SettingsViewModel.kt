@@ -14,6 +14,7 @@ import app.stepsapp.domain.ThemeMode
 import app.stepsapp.data.remote.UploadResult
 import app.stepsapp.data.repository.StepsRepository
 import app.stepsapp.data.repository.UploadRepository
+import app.stepsapp.live.StepCountingService
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -35,6 +36,8 @@ data class SettingsUiState(
     val folderLabel: String? = null,
     /** 最後に書き出せた時刻。未実施なら null */
     val lastUploadAt: Long? = null,
+    /** 常駐して歩数センサーを受け取り続けるか */
+    val liveCounting: Boolean = true,
 )
 
 class SettingsViewModel(app: Application) : AndroidViewModel(app) {
@@ -56,9 +59,21 @@ class SettingsViewModel(app: Application) : AndroidViewModel(app) {
             weightUnit = prefs.weightUnit,
             folderLabel = uploads.folderLabel(),
             lastUploadAt = uploads.lastUploadAt(),
+            liveCounting = prefs.liveCounting,
         ),
     )
     val state: StateFlow<SettingsUiState> = _state.asStateFlow()
+
+    /** 常駐の切り替え。すぐに始める／止める。 */
+    fun setLiveCounting(on: Boolean) {
+        prefs.liveCounting = on
+        if (on) {
+            StepCountingService.startIfEnabled(getApplication<Application>())
+        } else {
+            StepCountingService.stop(getApplication<Application>())
+        }
+        _state.value = _state.value.copy(liveCounting = on)
+    }
 
     fun setAccent(accent: Accent) {
         prefs.accent = accent

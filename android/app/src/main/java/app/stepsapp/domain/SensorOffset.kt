@@ -100,3 +100,34 @@ fun applyReading(
 
 /** 日跨ぎの差分を前日に寄せてよい、前回の読み取りからの経過時間の上限。 */
 const val MAX_CARRY_OVER_MS: Long = 60 * 60 * 1000L
+
+/**
+ * 常駐して受け取り続けているセンサーの値を状態に適用する。副作用を持たない純粋関数。
+ *
+ * [applyReading] と違い、**日跨ぎの差分は新しい日に入れる。** 受け取り続けている間は
+ * 歩けば必ずイベントが来るので、前回のイベントから日付が変わっていれば、
+ * その間の差分は今回のイベントの直前に歩いた分、つまり新しい日のもの。
+ *
+ * 常駐を始めて最初の値は止まっていた間の差分を含むので、ここではなく [applyReading] で扱う。
+ */
+fun applyLiveReading(state: SensorState, reading: Long, date: String): SensorUpdate {
+    require(reading >= 0) { "センサーの累積値が負: $reading" }
+
+    val rebooted = reading < state.baseReading
+    val delta = if (rebooted) reading else reading - state.baseReading
+
+    return if (date == state.baseDate) {
+        val acc = state.accumulated + delta
+        SensorUpdate(
+            newState = state.copy(baseReading = reading, accumulated = acc),
+            dayTotals = mapOf(date to acc),
+            rebootDetected = rebooted,
+        )
+    } else {
+        SensorUpdate(
+            newState = SensorState(baseReading = reading, baseDate = date, accumulated = delta),
+            dayTotals = mapOf(state.baseDate to state.accumulated, date to delta),
+            rebootDetected = rebooted,
+        )
+    }
+}

@@ -8,6 +8,7 @@ import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import app.stepsapp.data.repository.StepsRepository
 import app.stepsapp.data.local.PrefsStore
+import app.stepsapp.live.StepCountingService
 import app.stepsapp.notify.GoalNotifier
 import app.stepsapp.notify.HealthNotifier
 import java.time.DayOfWeek
@@ -18,9 +19,9 @@ import java.util.concurrent.TimeUnit
 /**
  * 定期的に歩数センサーを読んで日次歩数へ反映するワーカー。
  *
- * Foreground Service は使わない。ただしバックグラウンドからはセンサーのイベントが
- * OS に止められ（sensor access restriction）、センサーを実際に読めるのはアプリを開いたときだけ。
- * バックグラウンドの記録は Health Connect の読み取りが担っている。
+ * 歩数センサーは常駐サービス（[StepCountingService]）が受け取る。
+ * このワーカーからはセンサーのイベントが OS に止められる（sensor access restriction）ため。
+ * ここでは Health Connect の読み取りと、常駐が落ちていたときの立て直しを担う。
  */
 class StepSyncWorker(
     context: Context,
@@ -34,6 +35,8 @@ class StepSyncWorker(
             // 前回この処理が動いた時刻。今回ぶんで上書きする前に控えておく
             val previousSyncAt = prefs.lastSyncAt.takeIf { it > 0L }
             prefs.lastSyncAt = System.currentTimeMillis()
+            // 常駐が落ちていたら立て直す（アプリの更新や OS による終了のあと）
+            StepCountingService.startIfEnabled(applicationContext)
 
             repo.sync()
             // 計測が止まっていれば知らせる（状態が変わったときだけ鳴る）

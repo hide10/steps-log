@@ -159,6 +159,39 @@ class SensorOffsetTest {
     }
 
     @Test
+    fun `常駐中の日跨ぎの差分は新しい日に入れる`() {
+        // 受け取り続けている間は、歩けば必ずイベントが来る。
+        // 前回のイベントから日付が変わっていれば、差分は新しい日に歩いた分
+        val s = SensorState(baseReading = 5000, baseDate = day1, accumulated = 3000)
+
+        val u = applyLiveReading(s, 5012, day2)
+
+        assertEquals(3000L, u.dayTotals[day1])
+        assertEquals(12L, u.dayTotals[day2])
+        assertEquals(SensorState(baseReading = 5012, baseDate = day2, accumulated = 12), u.newState)
+    }
+
+    @Test
+    fun `常駐中の同じ日の値は差分が積み上がる`() {
+        val s = SensorState(baseReading = 5000, baseDate = day1, accumulated = 3000)
+
+        val u = applyLiveReading(s, 5100, day1)
+
+        assertEquals(3100L, u.dayTotals[day1])
+        assertEquals(5100L, u.newState.baseReading)
+    }
+
+    @Test
+    fun `常駐中に再起動を検知したら今回値を足し込む`() {
+        val s = SensorState(baseReading = 5000, baseDate = day1, accumulated = 3000)
+
+        val u = applyLiveReading(s, 40, day1)
+
+        assertTrue(u.rebootDetected)
+        assertEquals(3040L, u.dayTotals[day1])
+    }
+
+    @Test
     fun `負の累積値は不正な入力として弾く`() {
         try {
             applyReading(null, -1, day1)

@@ -8,9 +8,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import app.stepsapp.data.repository.StepsRepository
+import app.stepsapp.live.StepCountingService
 
 /**
- * 端末の再起動後に定期ワーカーを組み直す。
+ * 端末の再起動後に定期ワーカーと歩数センサーの常駐を組み直す。
  *
  * 再起動でセンサーの累積値が 0 に戻るが、オフセットの打ち直しは
  * 次回の読み取りで「今回値 < 前回値」として検知される。
@@ -21,6 +22,7 @@ class BootCompletedReceiver : BroadcastReceiver() {
         if (intent.action != Intent.ACTION_BOOT_COMPLETED) return
 
         StepSyncWorker.schedule(context)
+        StepCountingService.startIfEnabled(context)
 
         val pending = goAsync()
         CoroutineScope(Dispatchers.IO + SupervisorJob()).launch {

@@ -129,10 +129,17 @@ cd server && bun test && bun src/server.ts   # :8430
    目標をひとつしか持たないと、目標を変えた瞬間に過去の達成が塗り替わり、
    連続日数の自己ベストまで書き換わる。判定は必ず `GoalHistory` を通す。
    → `domain/GoalHistory.kt`、`GoalHistoryTest`
+8. **日跨ぎの差分の振り分けは、読み取りが途切れていたかで変える。**
+   常駐して受け取り続けている間は、差分を新しい日に入れる（歩けば必ずイベントが来るので、
+   前回のイベントのあとに歩いた分は新しい日のもの）→ `applyLiveReading`。
+   ワーカーからの読み取りと、常駐を始めて最初の値は途切れていた間を含むので、
+   1時間以内なら前日に寄せ、それより空いていたら捨てる → `applyReading`。
+   **長く空いた差分を前日に寄せてはいけない。** 歩いていない日に歩数が付く
 
 ## 実装済み
 
-- 歩数の記録（センサー + Health Connect、WorkManager 15分間隔、FGS なし）
+- 歩数の記録（センサーは常駐サービスで受け取り、Health Connect は WorkManager 15分間隔で読む。
+  常駐は health 型 FGS で、通知に今日の歩数。設定で切替、既定オン）
 - エクスポート/インポート（JSON=完全バックアップ / CSV=分析用、衝突解決3モード）
 - GitHub private repo への日次アップロード（PAT は EncryptedSharedPreferences）
 - 目標設定と達成リング、ストリーク（現在・自己ベスト）
@@ -291,7 +298,8 @@ gh release create v1.2.0 --target main --title "v1.2.0" --notes-file <ノート>
   「日跨ぎの差分は前日に寄せる」作りだったため、12日の朝から14日の昼まで
   読めなかった 9,650 歩が全部12日に入り、14日は 4,130 歩になった。
   長く空いた日跨ぎの差分は捨て、Health Connect を直近7日ぶん毎回読み直す形にした。
-  **FGS を使わない方針の前提（たまに起きて読めば取りこぼさない）は崩れている。**
+  前提が崩れたので、health 型の FGS で常駐してセンサーを受け取り続ける形に変えた
+  （設定で切替、既定オン。切ると歩数がずれることは設定画面で告知する）。
   確かめるときは `dumpsys sensorservice` の `StepCounterReader` の Active Time を見る
 - locapin（別プロジェクト）は `keystore.properties` と `*.jks` が git 管理下に入っている。
   **steps-app では最初のコミットから .gitignore 済み。同じ轍を踏まないこと**
