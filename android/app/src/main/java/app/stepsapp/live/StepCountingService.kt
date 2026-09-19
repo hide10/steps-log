@@ -27,18 +27,15 @@ import app.stepsapp.data.local.PrefsStore
 import app.stepsapp.data.repository.StepsRepository
 import app.stepsapp.domain.LiveBuffer
 import app.stepsapp.domain.LiveEvent
+import app.stepsapp.domain.observeCurrentDay
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
-import java.time.Duration
 import java.time.LocalDate
-import java.time.LocalDateTime
 
 /**
  * 常駐して歩数センサーを受け取り続ける。
@@ -159,19 +156,10 @@ class StepCountingService : Service() {
     /** 通知の歩数を今日の採用値に合わせ続ける。日付が変わったら今日の行を見直す。 */
     private suspend fun followToday() {
         val manager = NotificationManagerCompat.from(this)
-        while (currentCoroutineContext().isActive) {
-            val today = LocalDate.now()
-            val untilMidnight = Duration
-                .between(LocalDateTime.now(), today.plusDays(1).atStartOfDay())
-                .toMillis()
-                .coerceAtLeast(1_000)
-            withTimeoutOrNull(untilMidnight) {
-                repo.observeDay(today.toString()).collect { day ->
-                    runCatching {
-                        manager.notify(NOTIFICATION_ID, buildNotification(day?.stepCount ?: 0))
-                    }
-                }
-            }
+        observeCurrentDay(observeDay = repo::observeDay).collect { day ->
+            runCatching {
+                manager.notify(NOTIFICATION_ID, buildNotification(day?.stepCount ?: 0))
+            }.onFailure { Log.w(TAG, "歩数の通知を更新できなかった", it) }
         }
     }
 
