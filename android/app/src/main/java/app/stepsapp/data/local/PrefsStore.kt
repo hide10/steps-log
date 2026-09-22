@@ -96,6 +96,7 @@ class PrefsStore private constructor(context: Context) {
         get() = prefs.getLong(KEY_LAST_UPLOAD, 0L)
         set(value) = prefs.edit().putLong(KEY_LAST_UPLOAD, value).apply()
 
+
     // --- 単位。**保存は常に km / kg / cm のまま**で、換算は表示のときだけ行う。
     //     単位を切り替えるたびに保存値を変換すると丸め誤差が蓄積してしまう。
 

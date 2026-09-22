@@ -85,10 +85,8 @@ class StepsRepository private constructor(context: Context) {
     suspend fun stepsOn(date: String): Long = dao.findDay(date)?.stepCount ?: 0L
 
     /**
-     * 計測が止まっていないかを診断する。
-     *
-     * 歩数計は静かに壊れるので、利用者が自分で気づけるようにする。
-     *
+     * 権限と読み取り手段の有無を診断する。
+     * 実際に計測が止まったかどうかの診断は Issue #18 で扱う。
      */
     suspend fun healthStatus(now: Long = System.currentTimeMillis()): HealthStatus =
         checkHealth(
