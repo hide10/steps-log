@@ -30,15 +30,9 @@ class StepSyncWorker(
         return try {
             val repo = StepsRepository.getInstance(applicationContext)
             val prefs = PrefsStore.getInstance(applicationContext)
-            // 前回この処理が動いた時刻。今回ぶんで上書きする前に控えておく
-            val previousSyncAt = prefs.lastSyncAt.takeIf { it > 0L }
-            prefs.lastSyncAt = System.currentTimeMillis()
-
             repo.sync()
-            // 計測が止まっていれば知らせる（状態が変わったときだけ鳴る）
-            HealthNotifier(applicationContext).notifyIfNeeded(
-                repo.healthStatus(lastAttemptAt = previousSyncAt),
-            )
+            // 権限や読み取り手段が無ければ知らせる（状態が変わったときだけ鳴る）
+            HealthNotifier(applicationContext).notifyIfNeeded(repo.healthStatus())
             // 目標の進捗も知らせる（達成と「あと少し」を1日1回ずつ）
             val today = repo.today()
             val notifier = GoalNotifier(applicationContext)

@@ -96,18 +96,6 @@ class PrefsStore private constructor(context: Context) {
         get() = prefs.getLong(KEY_LAST_UPLOAD, 0L)
         set(value) = prefs.edit().putLong(KEY_LAST_UPLOAD, value).apply()
 
-    /**
-     * 最後に歩数の読み取りジョブが動いた時刻(epoch millis)。0 なら未実行。
-     *
-     * **「記録できた時刻」とは別物。** 歩いていなければセンサーはイベントを
-     * 返さないので記録は増えないが、それは異常ではない。計測が止まっているか
-     * どうかは「読みに行けているか」で判断する（[app.stepsapp.domain.checkHealth]）。
-     */
-    var lastSyncAt: Long
-        get() = prefs.getLong(KEY_LAST_SYNC, 0L)
-        set(value) = prefs.edit().putLong(KEY_LAST_SYNC, value).apply()
-
-
     // --- 単位。**保存は常に km / kg / cm のまま**で、換算は表示のときだけ行う。
     //     単位を切り替えるたびに保存値を変換すると丸め誤差が蓄積してしまう。
 
@@ -156,7 +144,6 @@ class PrefsStore private constructor(context: Context) {
         private const val KEY_WEIGHT_UNIT = "weight_unit"
         private const val KEY_STRIDE = "stride_cm"
         private const val KEY_LAST_UPLOAD = "last_upload_at"
-        private const val KEY_LAST_SYNC = "last_sync_at"
         private const val KEY_FOLDER = "folder_uri"
         private const val KEY_LAST_STEPS = "last_shown_steps"
         private const val KEY_LAST_DATE = "last_shown_date"
