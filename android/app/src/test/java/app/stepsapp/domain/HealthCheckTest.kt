@@ -53,32 +53,26 @@ class HealthCheckTest {
     }
 
     @Test
-    fun `しばらく記録が無ければ止まっているとみなす`() {
-        // 読み取りは15分間隔なので3時間空くのは明らかに異常
-        val s = check(lastAt = minutesAgo(200))
-        assertEquals(Health.STALE, s.health)
-        assertTrue(s.isProblem)
-        assertEquals(200L, s.minutesSinceLastReading)
+    fun `長時間記録が増えなくても未歩行なら警告しない`() {
+        val s = check(lastAt = minutesAgo(800))
+        assertEquals(Health.OK, s.health)
+        assertEquals(800L, s.minutesSinceLastReading)
     }
 
     @Test
-    fun `しきい値のすぐ手前では警告しない`() {
-        assertEquals(Health.OK, check(lastAt = minutesAgo(179)).health)
-        assertEquals(Health.STALE, check(lastAt = minutesAgo(180)).health)
-    }
-
-    @Test
-    fun `一度も記録できていなければ止まっている扱い`() {
+    fun `まだ一度も記録が無ければ権限とソースだけで判断する`() {
         val s = check(lastAt = null)
-        assertEquals(Health.STALE, s.health)
+        assertEquals(Health.OK, s.health)
         assertEquals(null, s.minutesSinceLastReading)
     }
 
     @Test
-    fun `夜間に数時間動かない程度で誤警告しない`() {
-        // 端末を置いて寝ているだけなら、ワーカーは動いて記録は入る。
-        // しきい値は「記録が無い」ことを見ているので歩数0でも警告しない
-        assertEquals(Health.OK, check(lastAt = minutesAgo(30)).health)
+    fun `朝一でまだ歩いていなくても警告しない`() {
+        // 歩数センサーは on-change なので、歩かなければ記録は増えない。
+        // 寝ている間ぶん記録が空いていても、未歩行と故障を区別できない
+        val s = check(lastAt = minutesAgo(600))
+        assertEquals(Health.OK, s.health)
+        assertEquals(600L, s.minutesSinceLastReading)
     }
 
     @Test
@@ -87,11 +81,5 @@ class HealthCheckTest {
         assertEquals("案内が重複している", advices.size, advices.toSet().size)
         assertTrue(advices.all { it.isNotBlank() })
         assertEquals("", adviceFor(Health.OK))
-    }
-
-    @Test
-    fun `バッテリー最適化に触れた案内をする`() {
-        // 実機で最も詰まりやすいのがここ
-        assertTrue(adviceFor(Health.STALE).contains("バッテリー"))
     }
 }

@@ -29,8 +29,9 @@ class StepSyncWorker(
     override suspend fun doWork(): Result {
         return try {
             val repo = StepsRepository.getInstance(applicationContext)
+            val prefs = PrefsStore.getInstance(applicationContext)
             repo.sync()
-            // 計測が止まっていれば知らせる（状態が変わったときだけ鳴る）
+            // 権限や読み取り手段が無ければ知らせる（状態が変わったときだけ鳴る）
             HealthNotifier(applicationContext).notifyIfNeeded(repo.healthStatus())
             // 目標の進捗も知らせる（達成と「あと少し」を1日1回ずつ）
             val today = repo.today()
@@ -38,7 +39,7 @@ class StepSyncWorker(
             val todaySteps = repo.stepsOn(today)
             notifier.notifyIfNeeded(
                 steps = todaySteps,
-                goal = PrefsStore.getInstance(applicationContext).goal,
+                goal = prefs.goal,
                 today = today,
                 hourOfDay = LocalTime.now().hour,
             )
