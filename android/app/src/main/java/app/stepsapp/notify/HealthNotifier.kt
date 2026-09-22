@@ -15,7 +15,7 @@ import app.stepsapp.domain.HealthStatus
 import app.stepsapp.domain.adviceFor
 
 /**
- * 計測が止まっていることを知らせる。
+ * 歩数の読み取り手段が無いことを知らせる。
  *
  * **同じ問題で何度も鳴らさない。** 状態が変わったときだけ出す。
  * 毎回鳴らすと無視されるようになり、肝心なときに気づけなくなる。

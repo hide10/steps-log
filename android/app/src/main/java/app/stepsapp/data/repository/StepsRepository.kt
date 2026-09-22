@@ -96,19 +96,13 @@ class StepsRepository private constructor(context: Context) {
      *
      * 歩数計は静かに壊れるので、利用者が自分で気づけるようにする。
      *
-     * @param lastAttemptAt **前回**読み取りに動いた時刻。今回ぶんを記録する前の値を渡す
-     *                      （今回の時刻を渡すと必ず「動いている」になってしまう）
      */
-    suspend fun healthStatus(
-        lastAttemptAt: Long?,
-        now: Long = System.currentTimeMillis(),
-    ): HealthStatus =
+    suspend fun healthStatus(now: Long = System.currentTimeMillis()): HealthStatus =
         checkHealth(
             hasActivityPermission = activityPermissionGranted(),
             sensorAvailable = sensorReader.isAvailable(),
             healthConnectGranted = healthConnect.hasPermission(),
             lastReadingAt = dao.lastReadingAt(),
-            lastAttemptAt = lastAttemptAt,
             now = now,
         )
 
