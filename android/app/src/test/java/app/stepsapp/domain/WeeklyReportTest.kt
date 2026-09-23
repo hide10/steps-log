@@ -77,4 +77,33 @@ class WeeklyReportTest {
         assertEquals("先週は1日あたり 8,000 歩", head)
         assertEquals("7日中3日の記録、目標達成 2日、前週より 1,000 歩多い", body)
     }
+
+    @Test
+    fun `完了週だけを新しい順に並べて空白週を飛ばす`() {
+        val steps = mapOf(
+            "2026-08-24" to 5_000L,
+            "2026-09-01" to 0L,
+            "2026-09-06" to 10_000L,
+            "2026-09-07" to 99_000L,
+        )
+        val reports = completedWeeklyReports(steps, monday, goals)
+        assertEquals(listOf("2026-08-31", "2026-08-24"), reports.map { it.weekStart })
+        assertEquals(2, reports.first().daysRecorded)
+        assertEquals(5_000L, reports.first().average)
+        assertEquals(0L, reports.first().diff)
+    }
+
+    @Test
+    fun `共有文に対象週と記録日数を含める`() {
+        val report = WeeklyReport("2026-08-31", 24_000, 8_000, 3, 2, -1_000)
+        val text = weeklyReportShareText(report)
+        assertEquals(
+            "歩数の振り返り 2026-08-31〜2026-09-06\n" +
+                "合計 24,000 歩\n" +
+                "記録した3日の平均 8,000 歩（7日中3日の記録）\n" +
+                "目標達成 2日\n" +
+                "前週より1日平均 1,000 歩少ない",
+            text,
+        )
+    }
 }

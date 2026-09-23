@@ -36,8 +36,29 @@ fun weeklyReport(
     stepsByDate: Map<String, Long>,
     today: LocalDate,
     goals: GoalHistory,
+): WeeklyReport? = weeklyReportFor(stepsByDate, weekStart(today).minusWeeks(1), goals)
+
+/** 記録のある完了済みの週だけを、新しい順に返す。 */
+fun completedWeeklyReports(
+    stepsByDate: Map<String, Long>,
+    today: LocalDate,
+    goals: GoalHistory,
+): List<WeeklyReport> {
+    val thisWeek = weekStart(today)
+    return stepsByDate.keys.asSequence()
+        .map { weekStart(LocalDate.parse(it)) }
+        .filter { it < thisWeek }
+        .distinct()
+        .sortedDescending()
+        .mapNotNull { weeklyReportFor(stepsByDate, it, goals) }
+        .toList()
+}
+
+private fun weeklyReportFor(
+    stepsByDate: Map<String, Long>,
+    start: LocalDate,
+    goals: GoalHistory,
 ): WeeklyReport? {
-    val start = weekStart(today).minusWeeks(1)
     val end = start.plusDays(6)
 
     val days = daysIn(stepsByDate, start, end)
@@ -58,6 +79,27 @@ fun weeklyReport(
             total / days.size - previous.values.sum() / previous.size
         },
     )
+}
+
+/** SNS に渡す前に画面で確認できる、週と集計条件を含む文章。 */
+fun weeklyReportShareText(report: WeeklyReport): String {
+    val end = LocalDate.parse(report.weekStart).plusDays(6)
+    val comparison = report.diff?.let {
+        when {
+            it > 0 -> "前週より1日平均 %,d 歩多い".format(it)
+            it < 0 -> "前週より1日平均 %,d 歩少ない".format(-it)
+            else -> "前週と1日平均が同じ"
+        }
+    }
+    return buildList {
+        add("歩数の振り返り ${report.weekStart}〜$end")
+        add("合計 %,d 歩".format(report.total))
+        add("記録した%d日の平均 %,d 歩（7日中%d日の記録）".format(
+            report.daysRecorded, report.average, report.daysRecorded,
+        ))
+        add("目標達成 ${report.achieved}日")
+        comparison?.let(::add)
+    }.joinToString("\n")
 }
 
 private fun daysIn(

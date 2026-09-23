@@ -38,6 +38,7 @@ import app.stepsapp.domain.newRecordsToday
 import app.stepsapp.domain.records
 import app.stepsapp.domain.WeeklyReport
 import app.stepsapp.domain.weeklyReport
+import app.stepsapp.domain.completedWeeklyReports
 import app.stepsapp.domain.isDivergent
 import app.stepsapp.domain.pickWeight
 import app.stepsapp.domain.shouldReplaceDay
@@ -465,6 +466,12 @@ class StepsRepository private constructor(context: Context) {
     suspend fun lastWeekReport(): WeeklyReport? {
         val all = dao.allDays().associate { it.localDate to it.stepCount }
         return weeklyReport(all, LocalDate.parse(today()), goalHistory())
+    }
+
+    /** 画面用の完了済み週。記録のない週は表示しない。 */
+    suspend fun completedWeeklyReports(): List<WeeklyReport> {
+        val all = dao.allDays().associate { it.localDate to it.stepCount }
+        return completedWeeklyReports(all, LocalDate.parse(today()), goalHistory())
     }
 
     /** 今日を含めた連続日数。通知の文面に使う。 */

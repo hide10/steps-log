@@ -14,4 +14,5 @@ object Routes {
     const val STREAK = "streak"
     const val BACKUP = "backup"
     const val SHARE = "share"
+    const val REVIEW = "review"
 }

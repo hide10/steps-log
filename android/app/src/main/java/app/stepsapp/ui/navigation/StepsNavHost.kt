@@ -25,6 +25,7 @@ import app.stepsapp.ui.body.BodyScreen
 import app.stepsapp.ui.home.HomeScreen
 import app.stepsapp.ui.settings.SettingsScreen
 import app.stepsapp.ui.share.ShareScreen
+import app.stepsapp.ui.review.ReviewScreen
 import app.stepsapp.ui.streak.StreakScreen
 
 private data class Tab(val route: String, val label: String, val icon: ImageVector)
@@ -74,6 +75,7 @@ fun StepsNavHost() {
                 HomeScreen(
                     onOpenStreak = { navController.navigate(Routes.STREAK) },
                     onOpenShare = { navController.navigate(Routes.SHARE) },
+                    onOpenReview = { navController.navigate(Routes.REVIEW) },
                 )
             }
             composable(Routes.STREAK) {
@@ -93,6 +95,11 @@ fun StepsNavHost() {
             composable(Routes.SHARE) {
                 BackBar("共有", onBack = { navController.popBackStack() }) { m ->
                     ShareScreen(modifier = m)
+                }
+            }
+            composable(Routes.REVIEW) {
+                BackBar("週の振り返り", onBack = { navController.popBackStack() }) { m ->
+                    ReviewScreen(modifier = m)
                 }
             }
         }
