@@ -15,7 +15,56 @@ class HealthCheckTest {
         sensor: Boolean = true,
         hc: Boolean = true,
         lastAt: Long? = minutesAgo(10),
-    ) = checkHealth(permission, sensor, hc, lastAt, now)
+        evidence: DiagnosticEvidence = DiagnosticEvidence(),
+    ) = checkHealth(permission, sensor, hc, lastAt, now, evidence)
+
+    @Test
+    fun `常駐の登録と Health Connect の読み取りが共に失敗したら警告する`() {
+        val evidence = DiagnosticEvidence(
+            sensorReception = SensorReception.FAILED,
+            healthConnectRead = HealthConnectRead.FAILED,
+            workerExecution = WorkerExecution.SUCCEEDED,
+        )
+        assertEquals(Health.READ_FAILURE, check(evidence = evidence).health)
+    }
+
+    @Test
+    fun `常駐の登録失敗だけなら Health Connect で計測できる`() {
+        val evidence = DiagnosticEvidence(
+            sensorReception = SensorReception.FAILED,
+            healthConnectRead = HealthConnectRead.SUCCEEDED,
+        )
+        assertEquals(Health.OK, check(evidence = evidence).health)
+    }
+
+    @Test
+    fun `Health Connect の失敗だけなら常駐センサーで計測できる`() {
+        val evidence = DiagnosticEvidence(
+            sensorReception = SensorReception.LISTENING,
+            healthConnectRead = HealthConnectRead.FAILED,
+        )
+        assertEquals(Health.OK, check(evidence = evidence).health)
+    }
+
+    @Test
+    fun `未歩行とワーカー遅延だけでは警告しない`() {
+        val evidence = DiagnosticEvidence(workerExecution = WorkerExecution.NOT_RUN)
+        assertEquals(Health.OK, check(lastAt = minutesAgo(1_440), evidence = evidence).health)
+    }
+
+    @Test
+    fun `ワーカー失敗だけでは計測停止を証明できない`() {
+        val evidence = DiagnosticEvidence(workerExecution = WorkerExecution.FAILED)
+        assertEquals(Health.OK, check(evidence = evidence).health)
+    }
+
+    @Test
+    fun `両方の失敗から片方が回復したら正常に戻る`() {
+        val broken = DiagnosticEvidence(SensorReception.FAILED, HealthConnectRead.FAILED)
+        val recovered = broken.copy(healthConnectRead = HealthConnectRead.SUCCEEDED)
+        assertEquals(Health.READ_FAILURE, check(evidence = broken).health)
+        assertEquals(Health.OK, check(evidence = recovered).health)
+    }
 
     @Test
     fun `全部そろって最近読めていれば問題なし`() {

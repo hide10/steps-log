@@ -1,6 +1,7 @@
 package app.stepsapp.work
 
 import android.content.Context
+import android.util.Log
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.PeriodicWorkRequestBuilder
@@ -11,6 +12,8 @@ import app.stepsapp.data.local.PrefsStore
 import app.stepsapp.live.StepCountingService
 import app.stepsapp.notify.GoalNotifier
 import app.stepsapp.notify.HealthNotifier
+import app.stepsapp.domain.DiagnosticEvidence
+import app.stepsapp.domain.WorkerExecution
 import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.LocalTime
@@ -32,12 +35,21 @@ class StepSyncWorker(
         return try {
             val repo = StepsRepository.getInstance(applicationContext)
             val prefs = PrefsStore.getInstance(applicationContext)
+            prefs.workerExecution = WorkerExecution.RUNNING
             // 常駐が落ちていたら立て直す（アプリの更新や OS による終了のあと）
             StepCountingService.startIfEnabled(applicationContext)
 
-            repo.sync()
+            val report = repo.sync()
             // 権限や読み取り手段が無ければ知らせる（状態が変わったときだけ鳴る）
-            HealthNotifier(applicationContext).notifyIfNeeded(repo.healthStatus())
+            HealthNotifier(applicationContext).notifyIfNeeded(
+                repo.healthStatus(
+                    DiagnosticEvidence(
+                        sensorReception = StepCountingService.reception(applicationContext),
+                        healthConnectRead = report.healthConnectRead,
+                        workerExecution = prefs.workerExecution,
+                    ),
+                ),
+            )
             // 目標の進捗も知らせる（達成と「あと少し」を1日1回ずつ）
             val today = repo.today()
             val notifier = GoalNotifier(applicationContext)
@@ -64,9 +76,12 @@ class StepSyncWorker(
                 repo.lastWeekReport()?.let { notifier.notifyWeekly(it) }
             }
 
+            prefs.workerExecution = WorkerExecution.SUCCEEDED
             Result.success()
         } catch (e: Exception) {
-            // センサーが一時的に読めない程度なら次回に回収されるのでリトライで十分
+            // 失敗を記録してリトライする。実行間隔やこの例外だけでは計測停止としない。
+            Log.w("StepSyncWorker", "歩数の同期に失敗した", e)
+            PrefsStore.getInstance(applicationContext).workerExecution = WorkerExecution.FAILED
             Result.retry()
         }
     }

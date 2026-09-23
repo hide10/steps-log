@@ -21,6 +21,7 @@ import androidx.health.connect.client.request.AggregateGroupByDurationRequest
 import androidx.health.connect.client.request.AggregateRequest
 import androidx.health.connect.client.time.TimeRangeFilter
 import app.stepsapp.domain.HourlySteps
+import app.stepsapp.domain.HealthConnectRead
 import java.time.Duration
 import app.stepsapp.domain.SleepPoint
 import app.stepsapp.domain.VitalKind
@@ -48,6 +49,9 @@ import java.time.ZoneId
  */
 class HealthConnectReader(private val context: Context) {
 
+    data class StepsRead(val steps: Long?, val status: HealthConnectRead)
+    data class RangeRead(val stepsByDay: Map<String, Long>, val todayStatus: HealthConnectRead)
+
     private val client: HealthConnectClient? by lazy {
         runCatching {
             if (HealthConnectClient.getSdkStatus(context) == HealthConnectClient.SDK_AVAILABLE) {
@@ -74,9 +78,11 @@ class HealthConnectReader(private val context: Context) {
      *
      * @return 歩数。権限が無い・利用不可・エラーなら null（センサーにフォールバックさせる）
      */
-    suspend fun readDay(date: LocalDate): Long? {
-        val c = client ?: return null
-        if (!hasPermission()) return null
+    suspend fun readDay(date: LocalDate): Long? = readDayDiagnosed(date).steps
+
+    private suspend fun readDayDiagnosed(date: LocalDate): StepsRead {
+        val c = client ?: return StepsRead(null, HealthConnectRead.UNAVAILABLE)
+        if (!hasPermission()) return StepsRead(null, HealthConnectRead.UNAVAILABLE)
 
         val start = date.atStartOfDay()
         val end = date.plusDays(1).atStartOfDay()
@@ -89,10 +95,10 @@ class HealthConnectReader(private val context: Context) {
                 ),
             )
             // データが1件も無い日は null が返る。これは「未計測」であって0歩ではない。
-            response[StepsRecord.COUNT_TOTAL]
+            StepsRead(response[StepsRecord.COUNT_TOTAL], HealthConnectRead.SUCCEEDED)
         }.onFailure {
             Log.w(TAG, "Health Connect の読み取りに失敗した", it)
-        }.getOrNull()
+        }.getOrElse { StepsRead(null, HealthConnectRead.FAILED) }
     }
 
     /**
@@ -143,17 +149,23 @@ class HealthConnectReader(private val context: Context) {
      *
      * @return 日付 -> 歩数。読めなかった日は含まれない
      */
-    suspend fun readRange(from: LocalDate, to: LocalDate): Map<String, Long> {
-        val c = client ?: return emptyMap()
-        if (!hasPermission()) return emptyMap()
+    suspend fun readRange(from: LocalDate, to: LocalDate): Map<String, Long> =
+        readRangeDiagnosed(from, to).stepsByDay
+
+    suspend fun readRangeDiagnosed(from: LocalDate, to: LocalDate): RangeRead {
+        val c = client ?: return RangeRead(emptyMap(), HealthConnectRead.UNAVAILABLE)
+        if (!hasPermission()) return RangeRead(emptyMap(), HealthConnectRead.UNAVAILABLE)
 
         val result = mutableMapOf<String, Long>()
+        var todayStatus = HealthConnectRead.UNKNOWN
         var date = from
         while (!date.isAfter(to)) {
-            readDay(date)?.let { result[date.toString()] = it }
+            val read = readDayDiagnosed(date)
+            read.steps?.let { result[date.toString()] = it }
+            if (date == to) todayStatus = read.status
             date = date.plusDays(1)
         }
-        return result
+        return RangeRead(result, todayStatus)
     }
 
     /** 履歴の読み取り権限があるか。あれば30日より前も読める。 */

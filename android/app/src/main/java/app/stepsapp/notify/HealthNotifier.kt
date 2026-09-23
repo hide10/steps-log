@@ -27,16 +27,14 @@ class HealthNotifier(private val context: Context) {
 
     fun notifyIfNeeded(status: HealthStatus) {
         val manager = NotificationManagerCompat.from(context)
-        if (!manager.areNotificationsEnabled()) return
-
         val last = prefs.getString(KEY_LAST_HEALTH, Health.OK.name)
-        if (status.health.name == last) return   // 状態が変わっていないので鳴らさない
-        prefs.edit().putString(KEY_LAST_HEALTH, status.health.name).apply()
-
         if (status.health == Health.OK) {
-            manager.cancel(NOTIFICATION_ID)
+            runCatching { manager.cancel(NOTIFICATION_ID) }
+            prefs.edit().putString(KEY_LAST_HEALTH, Health.OK.name).apply()
             return
         }
+        if (!manager.areNotificationsEnabled()) return
+        if (status.health.name == last) return   // 状態が変わっていないので鳴らさない
 
         ensureChannel()
         val tapToOpen = PendingIntent.getActivity(
@@ -57,6 +55,7 @@ class HealthNotifier(private val context: Context) {
             .build()
 
         runCatching { manager.notify(NOTIFICATION_ID, notification) }
+            .onSuccess { prefs.edit().putString(KEY_LAST_HEALTH, status.health.name).apply() }
     }
 
     private fun ensureChannel() {

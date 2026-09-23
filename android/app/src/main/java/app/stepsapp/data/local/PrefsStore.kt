@@ -7,6 +7,7 @@ import app.stepsapp.domain.DistanceUnit
 import app.stepsapp.domain.HeightUnit
 import app.stepsapp.domain.WeightUnit
 import app.stepsapp.domain.Goal
+import app.stepsapp.domain.WorkerExecution
 import app.stepsapp.domain.ThemeMode
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -127,6 +128,13 @@ class PrefsStore private constructor(context: Context) {
         get() = prefs.getBoolean(KEY_BACKFILL, false)
         set(value) = prefs.edit().putBoolean(KEY_BACKFILL, value).apply()
 
+    /** 最後のワーカー実行状態。遅延や中断だけでは計測停止とは判定しない。 */
+    var workerExecution: WorkerExecution
+        get() = prefs.getString(KEY_WORKER_EXECUTION, null)
+            ?.let { runCatching { WorkerExecution.valueOf(it) }.getOrNull() }
+            ?: WorkerExecution.NOT_RUN
+        set(value) = prefs.edit().putString(KEY_WORKER_EXECUTION, value.name).apply()
+
     /** 取り込み直しを促す（設定から手動で呼ぶ）。 */
     fun resetBackfill() {
         prefs.edit().putBoolean(KEY_BACKFILL, false).apply()
@@ -151,6 +159,7 @@ class PrefsStore private constructor(context: Context) {
         private const val KEY_SETUP = "setup_done"
         private const val KEY_LIVE = "live_counting"
         private const val KEY_BACKFILL = "backfill_done"
+        private const val KEY_WORKER_EXECUTION = "worker_execution"
         private const val KEY_DIST_UNIT = "distance_unit"
         private const val KEY_HEIGHT_UNIT = "height_unit"
         private const val KEY_WEIGHT_UNIT = "weight_unit"
