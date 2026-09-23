@@ -15,7 +15,20 @@ enum class Health {
 
     /** どのソースからも読めていない */
     NO_SOURCE,
+
+    /** 常駐センサーと Health Connect の読み取りがともに失敗した */
+    READ_FAILURE,
 }
+
+enum class SensorReception { DISABLED, UNKNOWN, LISTENING, FAILED }
+enum class HealthConnectRead { UNAVAILABLE, UNKNOWN, SUCCEEDED, FAILED }
+enum class WorkerExecution { NOT_RUN, RUNNING, SUCCEEDED, FAILED }
+
+data class DiagnosticEvidence(
+    val sensorReception: SensorReception = SensorReception.UNKNOWN,
+    val healthConnectRead: HealthConnectRead = HealthConnectRead.UNKNOWN,
+    val workerExecution: WorkerExecution = WorkerExecution.NOT_RUN,
+)
 
 data class HealthStatus(
     val health: Health,
@@ -26,14 +39,14 @@ data class HealthStatus(
 }
 
 /**
- * 読み取り手段の有無を判定する。副作用を持たない純粋関数。
+ * 読み取り手段と確認できた失敗を判定する。副作用を持たない純粋関数。
  *
  * **「記録が増えていない」ことを異常の根拠にしてはいけない。**
  * TYPE_STEP_COUNTER は on-change センサーで、歩数が変わらないとイベントを
  * 返さないことがある（[app.stepsapp.data.local.StepCounterReader] 参照）。
  * つまり生ログの最終時刻は実質「最後に歩いた時刻」であり、寝ている間と
- * 朝の未歩行だけで数時間空く。ワーカーの実行間隔も、実際に歩数を取得できたか
- * どうかを示さないため、この判定ではどちらも異常の根拠にしない。
+ * 朝の未歩行だけで数時間空く。ワーカーの実行状態も、実際に歩数を取得できたか
+ * どうかを単独では示さないため、この判定ではどちらも異常の根拠にしない。
  *
  * @param hasActivityPermission ACTIVITY_RECOGNITION が許可されているか
  * @param sensorAvailable       歩数センサーがある端末か
@@ -47,6 +60,7 @@ fun checkHealth(
     healthConnectGranted: Boolean,
     lastReadingAt: Long?,
     now: Long,
+    evidence: DiagnosticEvidence = DiagnosticEvidence(),
 ): HealthStatus {
     val elapsed = lastReadingAt?.let { (now - it) / 60_000 }
 
@@ -60,6 +74,13 @@ fun checkHealth(
         !canReadSensor && !healthConnectGranted ->
             HealthStatus(Health.NO_SOURCE, elapsed)
 
+        // 実行間隔と最終歩行時刻では停止を証明できない。常駐の登録失敗と
+        // HC の実際の読み取り失敗が揃った場合だけ、計測停止と判定する。
+        ((!canReadSensor || evidence.sensorReception == SensorReception.FAILED) &&
+            evidence.healthConnectRead == HealthConnectRead.FAILED) ||
+            (evidence.sensorReception == SensorReception.FAILED && !healthConnectGranted) ->
+            HealthStatus(Health.READ_FAILURE, elapsed)
+
         else -> HealthStatus(Health.OK, elapsed)
     }
 }
@@ -71,4 +92,6 @@ fun adviceFor(health: Health): String = when (health) {
         "「身体活動」の権限がありません。設定から許可してください"
     Health.NO_SOURCE ->
         "歩数を読み取れる手段がありません。Health Connect を許可してください"
+    Health.READ_FAILURE ->
+        "常駐センサーと Health Connect の読み取りに失敗しました。アプリを開いて確認してください"
 }

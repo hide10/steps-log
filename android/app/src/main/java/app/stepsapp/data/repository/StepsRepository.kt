@@ -26,6 +26,8 @@ import app.stepsapp.domain.StepSource
 import app.stepsapp.domain.applyReading
 import app.stepsapp.domain.applyLiveReading
 import app.stepsapp.domain.HealthStatus
+import app.stepsapp.domain.DiagnosticEvidence
+import app.stepsapp.domain.HealthConnectRead
 import app.stepsapp.domain.checkHealth
 import app.stepsapp.domain.ChosenSteps
 import app.stepsapp.domain.chooseSteps
@@ -53,6 +55,8 @@ import java.time.ZoneId
  * DI フレームワークは使わず、locapin と同じ `@Volatile` シングルトン方式で通す。
  */
 class StepsRepository private constructor(context: Context) {
+
+    data class SyncReport(val applied: Boolean, val healthConnectRead: HealthConnectRead)
 
     private val appContext = context.applicationContext
 
@@ -91,17 +95,18 @@ class StepsRepository private constructor(context: Context) {
     /** その日の採用値。記録が無ければ 0。 */
     suspend fun stepsOn(date: String): Long = dao.findDay(date)?.stepCount ?: 0L
 
-    /**
-     * 権限と読み取り手段の有無を診断する。
-     * 実際に計測が止まったかどうかの診断は Issue #18 で扱う。
-     */
-    suspend fun healthStatus(now: Long = System.currentTimeMillis()): HealthStatus =
+    /** 権限・読み取り手段と今回確認できた失敗から計測状態を診断する。 */
+    suspend fun healthStatus(
+        evidence: DiagnosticEvidence = DiagnosticEvidence(),
+        now: Long = System.currentTimeMillis(),
+    ): HealthStatus =
         checkHealth(
             hasActivityPermission = activityPermissionGranted(),
             sensorAvailable = sensorReader.isAvailable(),
             healthConnectGranted = healthConnect.hasPermission(),
             lastReadingAt = dao.lastReadingAt(),
             now = now,
+            evidence = evidence,
         )
 
     private fun activityPermissionGranted(): Boolean =
@@ -117,13 +122,14 @@ class StepsRepository private constructor(context: Context) {
      * センサーは「読むたびに差分を積む」性質上、読んだ値を必ず状態へ反映する必要があるが、
      * **日次の採用値は [chooseSteps] が選んだ片方だけ**を書き込む。合算はしない。
      *
-     * @return 何らかのソースを反映できたら true
+     * @return 反映結果と、当日の Health Connect 読み取り結果
      */
-    suspend fun sync(now: Long = System.currentTimeMillis()): Boolean {
+    suspend fun sync(now: Long = System.currentTimeMillis()): SyncReport {
         val date = today()
 
         val sensorTotals = readSensor(date, now)
-        val hcByDay = readHealthConnect(date, now)
+        val hcRead = readHealthConnect(date, now)
+        val hcByDay = hcRead.stepsByDay
 
         // 更新が必要な日（センサーの日跨ぎぶんと、Health Connect で読み直した直近の日）
         val days = buildSet {
@@ -151,7 +157,7 @@ class StepsRepository private constructor(context: Context) {
             applyDay(day, chosen, now)
             applied = true
         }
-        return applied
+        return SyncReport(applied, hcRead.todayStatus)
     }
 
     /**
@@ -366,10 +372,13 @@ class StepsRepository private constructor(context: Context) {
      *
      * 生ログは当日ぶんだけ残す。過去の日は訂正なので、取り込み（backfill）と同じ扱い。
      */
-    private suspend fun readHealthConnect(date: String, now: Long): Map<String, Long> {
+    private suspend fun readHealthConnect(
+        date: String,
+        now: Long,
+    ): HealthConnectReader.RangeRead {
         val today = LocalDate.parse(date)
-        val byDay = healthConnect.readRange(today.minusDays(RECENT_DAYS), today)
-        val steps = byDay[date] ?: return byDay
+        val read = healthConnect.readRangeDiagnosed(today.minusDays(RECENT_DAYS), today)
+        val steps = read.stepsByDay[date] ?: return read
         dao.insertRaw(
             StepReadingRawEntity(
                 localDate = date,
@@ -378,7 +387,7 @@ class StepsRepository private constructor(context: Context) {
                 recordedAt = now,
             ),
         )
-        return byDay
+        return read
     }
 
     /**

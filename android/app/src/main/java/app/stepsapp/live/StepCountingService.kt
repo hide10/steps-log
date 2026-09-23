@@ -27,6 +27,7 @@ import app.stepsapp.data.local.PrefsStore
 import app.stepsapp.data.repository.StepsRepository
 import app.stepsapp.domain.LiveBuffer
 import app.stepsapp.domain.LiveEvent
+import app.stepsapp.domain.SensorReception
 import app.stepsapp.domain.observeCurrentDay
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -91,6 +92,7 @@ class StepCountingService : Service() {
         }.onFailure { Log.w(TAG, "常駐を始められなかった", it) }.isSuccess
 
         if (!foreground || !prefs.liveCounting) {
+            if (!foreground && prefs.liveCounting) reception = SensorReception.FAILED
             stopSelf()
             return START_NOT_STICKY
         }
@@ -104,12 +106,14 @@ class StepCountingService : Service() {
         if (manager == null || sensor == null ||
             !manager.registerListener(listener, sensor, SensorManager.SENSOR_DELAY_NORMAL)
         ) {
+            reception = SensorReception.FAILED
             Log.w(TAG, "歩数センサーを受け取れないので常駐しない")
             stopSelf()
             return
         }
         listening = true
         running = true
+        reception = SensorReception.LISTENING
         scope.launch { consume() }
         notificationJob = scope.launch { followToday() }
     }
@@ -119,6 +123,7 @@ class StepCountingService : Service() {
             getSystemService(SensorManager::class.java)?.unregisterListener(listener)
         }
         running = false
+        if (listening) reception = SensorReception.UNKNOWN
         notificationJob?.cancel()
         // 間引いて持っている値は、consume() が閉じたのを見て書いてから終わる
         events.close()
@@ -217,6 +222,12 @@ class StepCountingService : Service() {
         var running: Boolean = false
             private set
 
+        @Volatile
+        private var reception: SensorReception = SensorReception.UNKNOWN
+
+        fun reception(context: Context): SensorReception =
+            if (PrefsStore.getInstance(context).liveCounting) reception else SensorReception.DISABLED
+
         /**
          * 設定がオンなら常駐を始める。動いていれば何もしない。
          *
@@ -235,7 +246,10 @@ class StepCountingService : Service() {
             }
             runCatching {
                 ContextCompat.startForegroundService(app, Intent(app, StepCountingService::class.java))
-            }.onFailure { Log.w(TAG, "常駐を始められなかった", it) }
+            }.onFailure {
+                reception = SensorReception.FAILED
+                Log.w(TAG, "常駐を始められなかった", it)
+            }
         }
 
         fun stop(context: Context) {
