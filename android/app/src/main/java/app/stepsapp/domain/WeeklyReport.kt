@@ -104,7 +104,7 @@ fun weeklyReportShareText(report: WeeklyReport): String {
         add("【週間歩数記録】${weeklyPeriodLabel(report, "〜")}（記録${report.daysRecorded}/7日）")
         add("1日平均：%,d歩%s".format(report.average, comparison))
         add("合計：%,d歩".format(report.total))
-        add("#歩数記録")
+        add("#歩数ログ")
     }.joinToString("\n")
 }
 

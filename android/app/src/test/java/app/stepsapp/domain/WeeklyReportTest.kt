@@ -104,7 +104,7 @@ class WeeklyReportTest {
             "【週間歩数記録】2026/08/31〜09/06（記録3/7日）\n" +
                 "1日平均：8,000歩（前週比 -1,000歩/日）\n" +
                 "合計：24,000歩\n" +
-                "#歩数記録",
+                "#歩数ログ",
             text,
         )
     }
@@ -115,7 +115,7 @@ class WeeklyReportTest {
         assertEquals(null, weeklyComparisonLabel(report))
         assertEquals(
             "【週間歩数記録】2026/09/14〜09/20（記録2/7日）\n" +
-                "1日平均：6,000歩\n合計：12,000歩\n#歩数記録",
+                "1日平均：6,000歩\n合計：12,000歩\n#歩数ログ",
             weeklyReportShareText(report),
         )
     }
