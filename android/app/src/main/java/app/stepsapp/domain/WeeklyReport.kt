@@ -81,24 +81,36 @@ private fun weeklyReportFor(
     )
 }
 
-/** SNS に渡す前に画面で確認できる、週と集計条件を含む文章。 */
-fun weeklyReportShareText(report: WeeklyReport): String {
-    val end = LocalDate.parse(report.weekStart).plusDays(6)
-    val comparison = report.diff?.let {
-        when {
-            it > 0 -> "前週より1日平均 %,d 歩多い".format(it)
-            it < 0 -> "前週より1日平均 %,d 歩少ない".format(-it)
-            else -> "前週と1日平均が同じ"
-        }
+/** 年をまたぐ週では、終了日にも年を付けて期間を曖昧にしない。 */
+fun weeklyPeriodLabel(report: WeeklyReport, separator: String = " - "): String {
+    val start = LocalDate.parse(report.weekStart)
+    val end = start.plusDays(6)
+    val from = "%04d/%02d/%02d".format(start.year, start.monthValue, start.dayOfMonth)
+    val to = if (start.year == end.year) {
+        "%02d/%02d".format(end.monthValue, end.dayOfMonth)
+    } else {
+        "%04d/%02d/%02d".format(end.year, end.monthValue, end.dayOfMonth)
     }
+    return "$from$separator$to"
+}
+
+/** 比較は記録日の1日平均同士。前週に記録がなければ null。 */
+fun weeklyComparisonLabel(report: WeeklyReport): String? = report.diff?.let {
+    when {
+        it > 0 -> "前週比 +%,d歩/日".format(it)
+        it < 0 -> "前週比 -%,d歩/日".format(-it)
+        else -> "前週比 変化なし"
+    }
+}
+
+/** 共有前のプレビューと送信本文に、同じ文章を使う。 */
+fun weeklyReportShareText(report: WeeklyReport): String {
+    val comparison = weeklyComparisonLabel(report)?.let { "（$it）" }.orEmpty()
     return buildList {
-        add("歩数の振り返り ${report.weekStart}〜$end")
-        add("合計 %,d 歩".format(report.total))
-        add("記録した%d日の平均 %,d 歩（7日中%d日の記録）".format(
-            report.daysRecorded, report.average, report.daysRecorded,
-        ))
-        add("目標達成 ${report.achieved}日")
-        comparison?.let(::add)
+        add("【週間歩数記録】${weeklyPeriodLabel(report, "〜")}（記録${report.daysRecorded}/7日）")
+        add("1日平均：%,d歩%s".format(report.average, comparison))
+        add("合計：%,d歩".format(report.total))
+        add("#歩数記録")
     }.joinToString("\n")
 }
 

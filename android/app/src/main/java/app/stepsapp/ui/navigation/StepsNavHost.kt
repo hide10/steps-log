@@ -98,7 +98,7 @@ fun StepsNavHost() {
                 }
             }
             composable(Routes.REVIEW) {
-                BackBar("週の振り返り", onBack = { navController.popBackStack() }) { m ->
+                BackBar("週間記録", onBack = { navController.popBackStack() }) { m ->
                     ReviewScreen(modifier = m)
                 }
             }

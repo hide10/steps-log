@@ -98,12 +98,29 @@ class WeeklyReportTest {
         val report = WeeklyReport("2026-08-31", 24_000, 8_000, 3, 2, -1_000)
         val text = weeklyReportShareText(report)
         assertEquals(
-            "歩数の振り返り 2026-08-31〜2026-09-06\n" +
-                "合計 24,000 歩\n" +
-                "記録した3日の平均 8,000 歩（7日中3日の記録）\n" +
-                "目標達成 2日\n" +
-                "前週より1日平均 1,000 歩少ない",
+            "【週間歩数記録】2026/08/31〜09/06（記録3/7日）\n" +
+                "1日平均：8,000歩（前週比 -1,000歩/日）\n" +
+                "合計：24,000歩\n" +
+                "#歩数記録",
             text,
         )
+    }
+
+    @Test
+    fun `比較できない週の共有文には前週比を入れない`() {
+        val report = WeeklyReport("2026-09-14", 12_000, 6_000, 2, 1, null)
+        assertEquals(null, weeklyComparisonLabel(report))
+        assertEquals(
+            "【週間歩数記録】2026/09/14〜09/20（記録2/7日）\n" +
+                "1日平均：6,000歩\n合計：12,000歩\n#歩数記録",
+            weeklyReportShareText(report),
+        )
+    }
+
+    @Test
+    fun `年をまたぐ週は終了日にも年を付ける`() {
+        val report = WeeklyReport("2026-12-28", 7_000, 7_000, 1, 1, 0)
+        assertEquals("2026/12/28 - 2027/01/03", weeklyPeriodLabel(report))
+        assertEquals("前週比 変化なし", weeklyComparisonLabel(report))
     }
 }
