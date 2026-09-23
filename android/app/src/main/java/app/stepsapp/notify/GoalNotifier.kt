@@ -18,6 +18,7 @@ import app.stepsapp.domain.RecordKind
 import app.stepsapp.domain.recordNoticeText
 import app.stepsapp.domain.WeeklyReport
 import app.stepsapp.domain.weeklyReportText
+import app.stepsapp.ui.navigation.Routes
 
 /**
  * 目標の達成・「あと少し」・自己記録の更新・週のまとめを知らせる。
@@ -114,8 +115,12 @@ class GoalNotifier(private val context: Context) {
         val (title, body) = weeklyReportText(report)
         val tapToOpen = PendingIntent.getActivity(
             context,
-            0,
-            Intent(context, MainActivity::class.java),
+            WEEKLY_NOTIFICATION_ID,
+            Intent(context, MainActivity::class.java).apply {
+                action = Routes.WEEKLY_REVIEW_ACTION
+                putExtra(Routes.EXTRA_WEEK_START, report.weekStart)
+                addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            },
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)

@@ -11,6 +11,7 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -20,11 +21,14 @@ import app.stepsapp.ui.common.BackBar
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.NavType
+import androidx.navigation.navArgument
 import app.stepsapp.ui.backup.BackupScreen
 import app.stepsapp.ui.body.BodyScreen
 import app.stepsapp.ui.home.HomeScreen
 import app.stepsapp.ui.settings.SettingsScreen
 import app.stepsapp.ui.share.ShareScreen
+import app.stepsapp.ui.review.ReviewScreen
 import app.stepsapp.ui.streak.StreakScreen
 
 private data class Tab(val route: String, val label: String, val icon: ImageVector)
@@ -36,7 +40,10 @@ private val TABS = listOf(
 )
 
 @Composable
-fun StepsNavHost() {
+fun StepsNavHost(
+    weeklyReviewWeek: String? = null,
+    onWeeklyReviewHandled: () -> Unit = {},
+) {
     val navController = rememberNavController()
     val entry by navController.currentBackStackEntryAsState()
     val current = entry?.destination?.route
@@ -95,6 +102,23 @@ fun StepsNavHost() {
                     ShareScreen(modifier = m)
                 }
             }
+            composable(
+                route = Routes.REVIEW,
+                arguments = listOf(navArgument("weekStart") { type = NavType.StringType }),
+            ) { entry ->
+                BackBar("週間記録", onBack = { navController.popBackStack() }) { m ->
+                    ReviewScreen(
+                        weekStart = entry.arguments?.getString("weekStart").orEmpty(),
+                        modifier = m,
+                    )
+                }
+            }
+        }
+    }
+    LaunchedEffect(weeklyReviewWeek) {
+        weeklyReviewWeek?.let {
+            navController.navigate(Routes.review(it)) { launchSingleTop = true }
+            onWeeklyReviewHandled()
         }
     }
 }

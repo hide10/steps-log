@@ -14,4 +14,9 @@ object Routes {
     const val STREAK = "streak"
     const val BACKUP = "backup"
     const val SHARE = "share"
+    const val REVIEW = "review/{weekStart}"
+    const val WEEKLY_REVIEW_ACTION = "app.stepsapp.action.WEEKLY_REVIEW"
+    const val EXTRA_WEEK_START = "app.stepsapp.extra.WEEK_START"
+
+    fun review(weekStart: String): String = "review/$weekStart"
 }

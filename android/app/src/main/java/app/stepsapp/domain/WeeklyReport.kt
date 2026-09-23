@@ -36,8 +36,23 @@ fun weeklyReport(
     stepsByDate: Map<String, Long>,
     today: LocalDate,
     goals: GoalHistory,
+): WeeklyReport? = weeklyReportFor(stepsByDate, weekStart(today).minusWeeks(1), goals)
+
+/** 通知が指す、完了済みの1週だけを取り出す。 */
+fun completedWeeklyReport(
+    stepsByDate: Map<String, Long>,
+    start: LocalDate,
+    today: LocalDate,
+    goals: GoalHistory,
+): WeeklyReport? =
+    if (start != weekStart(start) || start >= weekStart(today)) null
+    else weeklyReportFor(stepsByDate, start, goals)
+
+private fun weeklyReportFor(
+    stepsByDate: Map<String, Long>,
+    start: LocalDate,
+    goals: GoalHistory,
 ): WeeklyReport? {
-    val start = weekStart(today).minusWeeks(1)
     val end = start.plusDays(6)
 
     val days = daysIn(stepsByDate, start, end)
@@ -58,6 +73,39 @@ fun weeklyReport(
             total / days.size - previous.values.sum() / previous.size
         },
     )
+}
+
+/** 年をまたぐ週では、終了日にも年を付けて期間を曖昧にしない。 */
+fun weeklyPeriodLabel(report: WeeklyReport, separator: String = " - "): String {
+    val start = LocalDate.parse(report.weekStart)
+    val end = start.plusDays(6)
+    val from = "%04d/%02d/%02d".format(start.year, start.monthValue, start.dayOfMonth)
+    val to = if (start.year == end.year) {
+        "%02d/%02d".format(end.monthValue, end.dayOfMonth)
+    } else {
+        "%04d/%02d/%02d".format(end.year, end.monthValue, end.dayOfMonth)
+    }
+    return "$from$separator$to"
+}
+
+/** 比較は記録日の1日平均同士。前週に記録がなければ null。 */
+fun weeklyComparisonLabel(report: WeeklyReport): String? = report.diff?.let {
+    when {
+        it > 0 -> "前週比 +%,d歩/日".format(it)
+        it < 0 -> "前週比 -%,d歩/日".format(-it)
+        else -> "前週比 変化なし"
+    }
+}
+
+/** 共有前のプレビューと送信本文に、同じ文章を使う。 */
+fun weeklyReportShareText(report: WeeklyReport): String {
+    val comparison = weeklyComparisonLabel(report)?.let { "（$it）" }.orEmpty()
+    return buildList {
+        add("【週間歩数記録】${weeklyPeriodLabel(report, "〜")}（記録${report.daysRecorded}/7日）")
+        add("1日平均：%,d歩%s".format(report.average, comparison))
+        add("合計：%,d歩".format(report.total))
+        add("#歩数ログ")
+    }.joinToString("\n")
 }
 
 private fun daysIn(
