@@ -79,18 +79,21 @@ class WeeklyReportTest {
     }
 
     @Test
-    fun `完了週だけを新しい順に並べて空白週を飛ばす`() {
+    fun `通知で指定された完了週だけを表示する`() {
         val steps = mapOf(
             "2026-08-24" to 5_000L,
             "2026-09-01" to 0L,
             "2026-09-06" to 10_000L,
             "2026-09-07" to 99_000L,
         )
-        val reports = completedWeeklyReports(steps, monday, goals)
-        assertEquals(listOf("2026-08-31", "2026-08-24"), reports.map { it.weekStart })
-        assertEquals(2, reports.first().daysRecorded)
-        assertEquals(5_000L, reports.first().average)
-        assertEquals(0L, reports.first().diff)
+        val report = completedWeeklyReport(steps, LocalDate.parse("2026-08-31"), monday, goals)!!
+        assertEquals("2026-08-31", report.weekStart)
+        assertEquals(2, report.daysRecorded)
+        assertEquals(5_000L, report.average)
+        assertEquals(0L, report.diff)
+        assertNull(completedWeeklyReport(steps, monday, monday, goals))
+        assertNull(completedWeeklyReport(steps, LocalDate.parse("2026-08-25"), monday, goals))
+        assertNull(completedWeeklyReport(steps, LocalDate.parse("2026-08-17"), monday, goals))
     }
 
     @Test

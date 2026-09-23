@@ -11,7 +11,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 data class ReviewUiState(
-    val reports: List<WeeklyReport> = emptyList(),
+    val report: WeeklyReport? = null,
     val loading: Boolean = true,
 )
 
@@ -20,9 +20,13 @@ class ReviewViewModel(app: Application) : AndroidViewModel(app) {
     private val _state = MutableStateFlow(ReviewUiState())
     val state: StateFlow<ReviewUiState> = _state.asStateFlow()
 
-    init {
+    fun load(weekStart: String) {
+        _state.value = ReviewUiState()
         viewModelScope.launch {
-            _state.value = ReviewUiState(reports = repo.completedWeeklyReports(), loading = false)
+            _state.value = ReviewUiState(
+                report = repo.completedWeeklyReport(weekStart),
+                loading = false,
+            )
         }
     }
 }

@@ -6,8 +6,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.AlertDialog
@@ -15,6 +15,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -30,26 +31,26 @@ import app.stepsapp.domain.weeklyPeriodLabel
 import app.stepsapp.domain.weeklyReportShareText
 
 @Composable
-fun ReviewScreen(modifier: Modifier = Modifier, vm: ReviewViewModel = viewModel()) {
+fun ReviewScreen(
+    weekStart: String,
+    modifier: Modifier = Modifier,
+    vm: ReviewViewModel = viewModel(),
+) {
     val state by vm.state.collectAsStateWithLifecycle()
-    LazyColumn(
-        modifier = modifier.fillMaxSize(),
-        contentPadding = androidx.compose.foundation.layout.PaddingValues(20.dp),
+    LaunchedEffect(weekStart) { vm.load(weekStart) }
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        item {
-            Text(
-                "過去の歩数データを週単位で確認できます。",
-                style = MaterialTheme.typography.bodyMedium,
-            )
-        }
         if (state.loading) {
-            item { Text("データを読み込んでいます…") }
+            Text("データを読み込んでいます…")
+        } else {
+            state.report?.let { ReviewCard(it) }
+                ?: Text("この週の記録は表示できません。")
         }
-        if (!state.loading && state.reports.isEmpty()) {
-            item { Text("完了した週の記録がまだありません。") }
-        }
-        items(state.reports, key = { it.weekStart }) { report -> ReviewCard(report) }
     }
 }
 

@@ -38,21 +38,15 @@ fun weeklyReport(
     goals: GoalHistory,
 ): WeeklyReport? = weeklyReportFor(stepsByDate, weekStart(today).minusWeeks(1), goals)
 
-/** 記録のある完了済みの週だけを、新しい順に返す。 */
-fun completedWeeklyReports(
+/** 通知が指す、完了済みの1週だけを取り出す。 */
+fun completedWeeklyReport(
     stepsByDate: Map<String, Long>,
+    start: LocalDate,
     today: LocalDate,
     goals: GoalHistory,
-): List<WeeklyReport> {
-    val thisWeek = weekStart(today)
-    return stepsByDate.keys.asSequence()
-        .map { weekStart(LocalDate.parse(it)) }
-        .filter { it < thisWeek }
-        .distinct()
-        .sortedDescending()
-        .mapNotNull { weeklyReportFor(stepsByDate, it, goals) }
-        .toList()
-}
+): WeeklyReport? =
+    if (start != weekStart(start) || start >= weekStart(today)) null
+    else weeklyReportFor(stepsByDate, start, goals)
 
 private fun weeklyReportFor(
     stepsByDate: Map<String, Long>,

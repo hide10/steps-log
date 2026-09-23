@@ -62,7 +62,6 @@ import app.stepsapp.ui.common.GoalRing
 fun HomeScreen(
     onOpenStreak: () -> Unit = {},
     onOpenShare: () -> Unit = {},
-    onOpenReview: () -> Unit = {},
     vm: HomeViewModel = viewModel(),
 ) {
     val state by vm.state.collectAsStateWithLifecycle()
@@ -120,10 +119,6 @@ fun HomeScreen(
             )
 
             StatRow(state, onOpenStreak)
-
-            OutlinedButton(onClick = onOpenReview, modifier = Modifier.fillMaxWidth()) {
-                Text("週の振り返り")
-            }
 
             // 過去の自分を超えた日だけ出す。毎日出ると意味が薄れる
             if (state.newRecords.isNotEmpty()) {
