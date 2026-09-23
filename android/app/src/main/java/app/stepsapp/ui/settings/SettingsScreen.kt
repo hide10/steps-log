@@ -23,11 +23,15 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -56,6 +60,8 @@ fun SettingsScreen(
     vm: SettingsViewModel = viewModel(),
 ) {
     val state by vm.state.collectAsStateWithLifecycle()
+    // 常駐を切る前に、歩数がずれることを告げる
+    var confirmStopLive by remember { mutableStateOf(false) }
 
     // フォルダを選ぶ。ドライブのフォルダもここから選べる
     val folderPicker = rememberLauncherForActivityResult(
@@ -119,6 +125,32 @@ fun SettingsScreen(
                         label = { Text("%,d".format(preset)) },
                     )
                 }
+            }
+
+            HorizontalDivider()
+
+            Text("歩数の記録", style = MaterialTheme.typography.titleMedium)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("常駐して歩数を数える", style = MaterialTheme.typography.bodyLarge)
+                    Text(
+                        "オンの間は、通知に今日の歩数が出続けます。",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+                Switch(
+                    checked = state.liveCounting,
+                    onCheckedChange = { on ->
+                        if (on) vm.setLiveCounting(true) else confirmStopLive = true
+                    },
+                )
+            }
+            if (!state.liveCounting) {
+                Text(
+                    LIVE_OFF_NOTICE,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                )
             }
 
             HorizontalDivider()
@@ -223,6 +255,23 @@ fun SettingsScreen(
         }
     }
 
+    if (confirmStopLive) {
+        AlertDialog(
+            onDismissRequest = { confirmStopLive = false },
+            title = { Text("常駐をやめますか？") },
+            text = { Text(LIVE_OFF_NOTICE) },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmStopLive = false
+                    vm.setLiveCounting(false)
+                }) { Text("やめる") }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmStopLive = false }) { Text("続ける") }
+            },
+        )
+    }
+
     state.message?.let { message ->
         AlertDialog(
             onDismissRequest = { vm.dismissMessage() },
@@ -233,6 +282,13 @@ fun SettingsScreen(
         )
     }
 }
+
+/**
+ * 常駐を切ったときに起きること。切る前のダイアログと、切っている間の注意書きで同じ文を使う。
+ */
+private const val LIVE_OFF_NOTICE =
+    "オフの間は、アプリを閉じていると歩数センサーを読めません（Android の制限）。" +
+        "歩数は Health Connect の値だけになるので、実際の歩数とずれて少なく出る日があります。"
 
 /** 単位の選び方。項目が2つなので、チップを横に並べるだけで足りる。 */
 @OptIn(ExperimentalLayoutApi::class)

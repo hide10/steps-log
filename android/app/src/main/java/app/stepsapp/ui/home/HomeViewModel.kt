@@ -1,5 +1,6 @@
 package app.stepsapp.ui.home
 
+import app.stepsapp.live.StepCountingService
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -204,7 +205,11 @@ class HomeViewModel(app: Application) : AndroidViewModel(app) {
 
     fun onPermissionResult(granted: Boolean) {
         _state.value = _state.value.copy(permissionGranted = granted)
-        if (granted) sync()
+        if (granted) {
+            // 画面を開いている今なら常駐を始められる（裏からの開始は OS に拒まれることがある）
+            StepCountingService.startIfEnabled(getApplication<Application>())
+            sync()
+        }
     }
 
     fun sync() {

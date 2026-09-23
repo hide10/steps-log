@@ -10,6 +10,11 @@ class SensorOffsetTest {
     private val day1 = "2026-08-25"
     private val day2 = "2026-08-26"
 
+    private companion object {
+        const val MINUTE = 60 * 1000L
+        const val HOUR = 60 * MINUTE
+    }
+
     @Test
     fun `初回の読み取りは基準を作るだけで0歩から始まる`() {
         // 端末を再起動せずに使い続けていると累積値は大きい。
@@ -69,7 +74,7 @@ class SensorOffsetTest {
         var s = applyReading(null, 1000, day1).newState
         s = applyReading(s, 1500, day1).newState   // day1 は 500 歩
 
-        val u = applyReading(s, 1560, day2)
+        val u = applyReading(s, 1560, day2, elapsedMs = 15 * MINUTE)
 
         // 日跨ぎ分の 60 歩は前日に寄せる
         assertEquals(560L, u.dayTotals[day1])
@@ -85,7 +90,7 @@ class SensorOffsetTest {
         s = applyReading(s, 8300, day1).newState   // day1 は 300 歩
 
         // 日付が変わり、かつ再起動していて、再起動後 45 歩
-        val u = applyReading(s, 45, day2)
+        val u = applyReading(s, 45, day2, elapsedMs = 15 * MINUTE)
 
         assertTrue(u.rebootDetected)
         assertEquals(345L, u.dayTotals[day1])
@@ -96,10 +101,94 @@ class SensorOffsetTest {
     fun `新しい日に入ってからの読み取りはその日に積み上がる`() {
         var s = applyReading(null, 1000, day1).newState
         s = applyReading(s, 1500, day1).newState
-        s = applyReading(s, 1560, day2).newState   // 日跨ぎ、day2 は 0 から
+        s = applyReading(s, 1560, day2, elapsedMs = 15 * MINUTE).newState   // 日跨ぎ、day2 は 0 から
 
         val u = applyReading(s, 1700, day2)
         assertEquals(140L, u.dayTotals[day2])
+    }
+
+    @Test
+    fun `長く空いた日跨ぎの差分はどの日にも入れない`() {
+        // 実機で踏んだ例: 12日の朝に読んだきり、14日の昼まで読めなかった。
+        // 前日（最後に読めた12日）に寄せると、歩いていない12日に歩数が付き、
+        // 14日は0から数え直しになる
+        val day3 = "2026-08-27"
+        var s = applyReading(null, 0, day1).newState
+
+        val u = applyReading(s, 9650, day3, elapsedMs = 52 * HOUR)
+
+        assertEquals(null, u.dayTotals[day1])
+        assertEquals(0L, u.dayTotals[day3])
+        assertEquals(day3, u.newState.baseDate)
+        assertEquals(9650L, u.newState.baseReading)
+
+        // 以降はその日に積み上がる
+        s = u.newState
+        assertEquals(2895L, applyReading(s, 12_545, day3, elapsedMs = 10 * HOUR).dayTotals[day3])
+    }
+
+    @Test
+    fun `隣の日でも間が長ければ前日に寄せない`() {
+        // 前日の夕方から翌日の昼までの差分には、翌日の午前に歩いた分が混ざる
+        var s = applyReading(null, 1000, day1).newState
+        s = applyReading(s, 1500, day1).newState
+
+        val u = applyReading(s, 4000, day2, elapsedMs = 18 * HOUR)
+
+        assertEquals(null, u.dayTotals[day1])
+        assertEquals(0L, u.dayTotals[day2])
+    }
+
+    @Test
+    fun `経過時間が分からない日跨ぎは長く空いたとみなす`() {
+        var s = applyReading(null, 1000, day1).newState
+        s = applyReading(s, 1500, day1).newState
+
+        val u = applyReading(s, 1560, day2, elapsedMs = null)
+
+        assertEquals(null, u.dayTotals[day1])
+    }
+
+    @Test
+    fun `前日に寄せるのは上限ちょうどまで`() {
+        var s = applyReading(null, 1000, day1).newState
+        s = applyReading(s, 1500, day1).newState
+
+        assertEquals(560L, applyReading(s, 1560, day2, MAX_CARRY_OVER_MS).dayTotals[day1])
+        assertEquals(null, applyReading(s, 1560, day2, MAX_CARRY_OVER_MS + 1).dayTotals[day1])
+    }
+
+    @Test
+    fun `常駐中の日跨ぎの差分は新しい日に入れる`() {
+        // 受け取り続けている間は、歩けば必ずイベントが来る。
+        // 前回のイベントから日付が変わっていれば、差分は新しい日に歩いた分
+        val s = SensorState(baseReading = 5000, baseDate = day1, accumulated = 3000)
+
+        val u = applyLiveReading(s, 5012, day2)
+
+        assertEquals(3000L, u.dayTotals[day1])
+        assertEquals(12L, u.dayTotals[day2])
+        assertEquals(SensorState(baseReading = 5012, baseDate = day2, accumulated = 12), u.newState)
+    }
+
+    @Test
+    fun `常駐中の同じ日の値は差分が積み上がる`() {
+        val s = SensorState(baseReading = 5000, baseDate = day1, accumulated = 3000)
+
+        val u = applyLiveReading(s, 5100, day1)
+
+        assertEquals(3100L, u.dayTotals[day1])
+        assertEquals(5100L, u.newState.baseReading)
+    }
+
+    @Test
+    fun `常駐中に再起動を検知したら今回値を足し込む`() {
+        val s = SensorState(baseReading = 5000, baseDate = day1, accumulated = 3000)
+
+        val u = applyLiveReading(s, 40, day1)
+
+        assertTrue(u.rebootDetected)
+        assertEquals(3040L, u.dayTotals[day1])
     }
 
     @Test

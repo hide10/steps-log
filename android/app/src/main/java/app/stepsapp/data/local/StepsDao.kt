@@ -44,6 +44,10 @@ interface StepsDao {
     @Query("SELECT MAX(recordedAt) FROM step_readings_raw")
     suspend fun lastReadingAt(): Long?
 
+    /** センサーを最後に読めた時刻。日跨ぎの差分を前日に寄せてよいかの判断に使う。 */
+    @Query("SELECT MAX(recordedAt) FROM step_readings_raw WHERE source = 'SENSOR'")
+    suspend fun lastSensorReadingAt(): Long?
+
     // --- 体重 ---
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)

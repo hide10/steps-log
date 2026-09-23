@@ -53,12 +53,23 @@ user-selected apps priorities"）。したがって `dataOriginFilter` で
 1.1.0 にも 1.2.0-alpha05 にも存在しない**（aar を展開して確認済み）。
 そもそも aggregate 側が重複を処理するため不要。実在しない API を前提にしないこと。
 
-### バックグラウンド記録: FGS を使わない
+### バックグラウンド記録: 歩数センサーは health 型の FGS で受け取る（2026-09-15 変更）
 
-`TYPE_STEP_COUNTER` はハードウェアカウンタで Doze 中も数え続けるため、
-常駐サービスは構造的に不要。WorkManager の定期実行(15分間隔)で読み出す。
+歩数センサーは常駐サービス（`live/StepCountingService`）で受け取り続け、通知に今日の歩数を出す。
+Health Connect の読み取りと、常駐が落ちていたときの立て直しは WorkManager の定期実行(15分間隔)が担う。
+常駐は設定で切れる（既定オン）。切ると歩数がずれることは設定画面で告知する。
 
 - 再起動でセンサーの累積値がリセットされる → `今回値 < 前回値` で再起動を検知しオフセットを打ち直す
+
+> **ただし「数え続ける」と「バックグラウンドから読める」は別。**（2026-09-15 判明）
+> Pixel 11 Pro では、ワーカーからの `registerListener` が
+> `Suspended ... due to sensor access restriction` で止められ、イベントが来ない
+> （`dumpsys sensorservice` で確認。アプリを開いているときの読み取りは Active 100%）。
+> 当初は「Doze 中も数え続けるので、たまに起きて読めば常駐は不要」として FGS を使わなかったが、
+> この前提が崩れたので常駐で受け取る形に変えた。
+> 常駐を切っている間や落ちていた間は読み取りが何日も空きうるので、
+> 長く空いた日跨ぎの差分はどの日にも入れない（`applyReading` の `elapsedMs`）。
+> 常駐中の日跨ぎは新しい日に入れる（`applyLiveReading`）。
 - `BOOT_COMPLETED` で WorkManager を組み直し、基準値を再初期化する
 
 ### データの持ち方
