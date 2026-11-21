@@ -5,4 +5,21 @@
     <string name="widget_week_desc">今日の歩数と直近7日のグラフ</string>
     <string name="widget_summary_desc">歩数・連続日数・体重・睡眠のまとめ</string>
     <string name="widget_month_desc">今月の平均と日別のグラフ</string>
+
+    <!-- 課金（試用版ロゴと remove_logo）。文言は KB Code の課金テンプレートに沿う -->
+    <string name="logo_trial_label">歩数ログ 試用版</string>
+    <string name="billing_remove_logo">ロゴを消す</string>
+    <string name="billing_free_features">すべての機能は無料で、制限なく使えます。買い切りを購入すると、画面左下の試用版ロゴが消えます。</string>
+    <string name="billing_owned">購入済み</string>
+    <string name="billing_buy">購入 · %1$s</string>
+    <string name="billing_restore">購入を復元・再確認</string>
+    <string name="billing_nothing_to_restore">復元できる購入はありませんでした</string>
+    <string name="billing_checking">Google Playに確認中です…</string>
+    <string name="billing_purchasing">Google Playで購入手続きを完了してください。</string>
+    <string name="billing_pending">お支払いは保留中です。完了するとロゴが消えます。</string>
+    <string name="billing_acknowledging">購入を承認しています…</string>
+    <string name="billing_canceled">購入をキャンセルしました。無料機能はそのまま使えます。</string>
+    <string name="billing_offline">Google Playに接続できません。保存済みの購入状態はそのまま残ります。復元や確認は、接続してからもう一度お試しください。</string>
+    <string name="billing_unavailable">現在Google Playで購入できません。無料機能はそのまま使えます。</string>
+    <string name="billing_error">購入の確認に失敗しました。再確認してください。無料機能はそのまま使えます。</string>
 </resources>

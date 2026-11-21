@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Billing (trial logo and remove_logo). Wording follows the KB Code billing template. -->
+    <string name="logo_trial_label">Steps Log Trial</string>
+    <string name="billing_remove_logo">Remove logo</string>
+    <string name="billing_free_features">All features are free, with no limits. This one-time purchase removes the trial logo at the bottom left of the screen.</string>
+    <string name="billing_owned">Purchased</string>
+    <string name="billing_buy">Buy · %1$s</string>
+    <string name="billing_restore">Restore purchases / Retry</string>
+    <string name="billing_nothing_to_restore">No purchases to restore</string>
+    <string name="billing_checking">Checking Google Play…</string>
+    <string name="billing_purchasing">Complete the purchase in Google Play.</string>
+    <string name="billing_pending">Payment is pending. The logo will disappear when the payment completes.</string>
+    <string name="billing_acknowledging">Confirming your purchase…</string>
+    <string name="billing_canceled">Purchase canceled. All free features remain available.</string>
+    <string name="billing_offline">Cannot connect to Google Play. Saved purchases are kept. Reconnect and retry to restore or confirm a purchase.</string>
+    <string name="billing_unavailable">This purchase is currently unavailable on Google Play. All free features remain available.</string>
+    <string name="billing_error">Purchase verification failed. Please retry. All free features remain available.</string>
+</resources>

@@ -347,14 +347,14 @@ class HealthConnectReader(private val context: Context) {
         /**
          * まとめて要求する権限。
          *
+         * Play 公開に向けた本人の決定（2026-11-21）で、歩数・体重・睡眠の
+         * 中核3種だけに絞った。保留中機能（心拍・血圧など）の権限は要求しない。
          * 体重・睡眠は歩数のおまけなので、拒否されても歩数の記録は動き続ける
          * （各読み取りが個別に権限を確かめ、無ければ空を返す）。
+         * [readVitals] のコードは残してあるが、権限が無い間は常に空を返す。
          */
         val PERMISSIONS: Set<String> = setOf(
-            READ_STEPS, READ_WEIGHT, READ_SLEEP, READ_HISTORY,
-            READ_RESTING_HEART_RATE, READ_HEART_RATE, READ_BLOOD_PRESSURE,
-            READ_BODY_FAT, READ_OXYGEN_SATURATION, READ_DISTANCE,
-            READ_CALORIES, READ_FLOORS, READ_EXERCISE,
+            READ_STEPS, READ_WEIGHT, READ_SLEEP,
         )
     }
 }

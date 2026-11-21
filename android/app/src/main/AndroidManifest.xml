@@ -1,5 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- アプリ自身は通信しない。INTERNET は課金ライブラリの依存
+         （datatransport）からマニフェスト統合で入ってくるため、鏡と同じく
+         明示的に除去する。購入の通信は Play ストアアプリが行うので影響しない -->
+    <uses-permission android:name="android.permission.INTERNET" tools:node="remove" />
 
     <!-- 歩数センサー(TYPE_STEP_COUNTER)の読み取りに必須のランタイム権限 -->
     <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />
@@ -12,25 +18,14 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_HEALTH" />
 
-    <!-- Health Connect から歩数を読む。バックグラウンド読み取りは
-         WorkManager から読むために必要 -->
+    <!-- Health Connect から読むのは歩数・体重・睡眠の中核3種だけ
+         （Play 公開に向けた本人の決定、2026-11-21）。
+         心拍・血圧・体脂肪率などの保留中機能の権限は外した。
+         読み取り側は種類ごとに権限を確認し、無ければ空を返すので、
+         権限が無い前提でも歩数の記録は動き続ける -->
     <uses-permission android:name="android.permission.health.READ_STEPS" />
-    <!-- 体重・睡眠も自分の手元に持つため（拒否されても歩数の記録は動き続ける） -->
     <uses-permission android:name="android.permission.health.READ_WEIGHT" />
     <uses-permission android:name="android.permission.health.READ_SLEEP" />
-    <uses-permission android:name="android.permission.health.READ_HEALTH_DATA_IN_BACKGROUND" />
-    <!-- 権限付与から30日より前の過去データも取り込むため -->
-    <uses-permission android:name="android.permission.health.READ_HEALTH_DATA_HISTORY" />
-    <!-- 取れる健康データは全部取る。個別に拒否されても他は動く -->
-    <uses-permission android:name="android.permission.health.READ_HEART_RATE" />
-    <uses-permission android:name="android.permission.health.READ_RESTING_HEART_RATE" />
-    <uses-permission android:name="android.permission.health.READ_BLOOD_PRESSURE" />
-    <uses-permission android:name="android.permission.health.READ_BODY_FAT" />
-    <uses-permission android:name="android.permission.health.READ_OXYGEN_SATURATION" />
-    <uses-permission android:name="android.permission.health.READ_DISTANCE" />
-    <uses-permission android:name="android.permission.health.READ_ACTIVE_CALORIES_BURNED" />
-    <uses-permission android:name="android.permission.health.READ_FLOORS_CLIMBED" />
-    <uses-permission android:name="android.permission.health.READ_EXERCISE" />
 
     <!-- 歩数計は歩数センサーのある端末でのみ意味があるが、
          センサーが無い端末では Health Connect にフォールバックするため required=false -->

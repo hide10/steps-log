@@ -30,8 +30,8 @@ android {
         applicationId = "com.kbcode.steps"
         minSdk = 26
         targetSdk = 36
-        versionCode = 5
-        versionName = "1.2.0"
+        versionCode = 1
+        versionName = "1.0.0"
     }
 
     signingConfigs {
@@ -47,7 +47,14 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            // Play 公開に向け、KB Code の前例（ろかぴん・鏡）に合わせて有効化する。
+            // 判断の記録は ~/workspace/steps-release/STATUS.md を参照
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
             // 鍵が無い環境では署名なしのままにする（clone しただけでも組める）
             signingConfig = signingConfigs.findByName("release")
         }
@@ -60,6 +67,11 @@ android {
 
     kotlinOptions {
         jvmTarget = "17"
+    }
+
+    testOptions {
+        // Robolectric のテスト（課金の UI テスト等）が文字列リソースを読めるようにする
+        unitTests.isIncludeAndroidResources = true
     }
 
     buildFeatures {
@@ -101,6 +113,9 @@ dependencies {
     // Health Connect
     implementation("androidx.health.connect:connect-client:1.1.0")
 
+    // Google Play 課金（試用版ロゴの除去 remove_logo）
+    implementation("com.android.billingclient:billing:8.3.0")
+
     // WorkManager
     implementation("androidx.work:work-runtime-ktx:2.10.0")
 
@@ -116,4 +131,7 @@ dependencies {
     // Unit test
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0")
+    // 課金のテスト（ろかぴんと同じ構成。Robolectric で JVM 上で回す）
+    testImplementation("org.robolectric:robolectric:4.14.1")
+    testImplementation("androidx.compose.ui:ui-test-junit4")
 }
