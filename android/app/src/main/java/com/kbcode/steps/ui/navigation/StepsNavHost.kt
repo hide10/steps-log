@@ -23,6 +23,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.NavType
 import androidx.navigation.navArgument
+import com.kbcode.steps.billing.LogoBillingState
 import com.kbcode.steps.ui.backup.BackupScreen
 import com.kbcode.steps.ui.body.BodyScreen
 import com.kbcode.steps.ui.home.HomeScreen
@@ -43,6 +44,9 @@ private val TABS = listOf(
 fun StepsNavHost(
     weeklyReviewWeek: String? = null,
     onWeeklyReviewHandled: () -> Unit = {},
+    billingState: LogoBillingState = LogoBillingState(),
+    onBuyLogo: () -> Unit = {},
+    onRestoreLogo: () -> Unit = {},
 ) {
     val navController = rememberNavController()
     val entry by navController.currentBackStackEntryAsState()
@@ -90,7 +94,12 @@ fun StepsNavHost(
             }
             composable(Routes.BODY) { BodyScreen() }
             composable(Routes.SETTINGS) {
-                SettingsScreen(onOpenBackup = { navController.navigate(Routes.BACKUP) })
+                SettingsScreen(
+                    onOpenBackup = { navController.navigate(Routes.BACKUP) },
+                    billingState = billingState,
+                    onBuyLogo = onBuyLogo,
+                    onRestoreLogo = onRestoreLogo,
+                )
             }
             composable(Routes.BACKUP) {
                 BackBar("バックアップ", onBack = { navController.popBackStack() }) { m ->

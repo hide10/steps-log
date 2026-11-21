@@ -46,6 +46,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import com.kbcode.steps.BuildConfig
+import com.kbcode.steps.billing.LogoBillingState
+import com.kbcode.steps.ui.billing.LogoPurchaseSection
 import com.kbcode.steps.domain.Accent
 import com.kbcode.steps.domain.DistanceUnit
 import com.kbcode.steps.domain.Goal
@@ -57,6 +59,9 @@ import com.kbcode.steps.domain.ThemeMode
 @Composable
 fun SettingsScreen(
     onOpenBackup: () -> Unit = {},
+    billingState: LogoBillingState = LogoBillingState(),
+    onBuyLogo: () -> Unit = {},
+    onRestoreLogo: () -> Unit = {},
     vm: SettingsViewModel = viewModel(),
 ) {
     val state by vm.state.collectAsStateWithLifecycle()
@@ -244,6 +249,15 @@ fun SettingsScreen(
                     Text("保存先を解除する")
                 }
             }
+
+            HorizontalDivider()
+
+            // 試用版ロゴの購入と復元（KB Code 課金テンプレート）
+            LogoPurchaseSection(
+                state = billingState,
+                onBuy = onBuyLogo,
+                onRestore = onRestoreLogo,
+            )
 
             // どの版が入っているか、端末を見るだけで分かるようにする。
             // 配布した APK と手元のビルドが混ざったときに要る
