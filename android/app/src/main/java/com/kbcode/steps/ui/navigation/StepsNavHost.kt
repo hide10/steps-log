@@ -1,5 +1,6 @@
 package com.kbcode.steps.ui.navigation
 
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DirectionsWalk
@@ -24,6 +25,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.NavType
 import androidx.navigation.navArgument
 import com.kbcode.steps.billing.LogoBillingState
+import com.kbcode.steps.ui.billing.TrialLogoBar
 import com.kbcode.steps.ui.backup.BackupScreen
 import com.kbcode.steps.ui.body.BodyScreen
 import com.kbcode.steps.ui.home.HomeScreen
@@ -54,8 +56,12 @@ fun StepsNavHost(
 
     Scaffold(
         bottomBar = {
-            // バックアップ画面はタブの下位なのでタブ自体は出したまま
-            NavigationBar {
+            // 試用版ロゴはタブバーの上の帯としてレイアウトに組み込む。
+            // 画面に重ねるとスクロールするボタンや文字と重なるため（エミュレータで実測）
+            Column {
+                TrialLogoBar(owned = billingState.owned)
+                // バックアップ画面はタブの下位なのでタブ自体は出したまま
+                NavigationBar {
                 TABS.forEach { tab ->
                     NavigationBarItem(
                         selected = current == tab.route,
@@ -72,6 +78,7 @@ fun StepsNavHost(
                         icon = { Icon(tab.icon, contentDescription = tab.label) },
                         label = { Text(tab.label) },
                     )
+                }
                 }
             }
         },

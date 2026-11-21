@@ -37,13 +37,14 @@ class LogoUiTest {
     @get:Rule(order = 0) val componentActivity = ComponentActivityRegistrationRule()
     @get:Rule(order = 1) val compose = createAndroidComposeRule<ComponentActivity>()
 
-    @Test fun logoIsVisibleAtBottomLeftAndDoesNotInterceptTouchesOrExposeText() {
+    // 歩数ログではロゴは重ねず「帯」として置く（画面に重ねると下部のボタンや
+    // 文字と重なるため）。帯が自分の場所を取り、内容と重ならないことを確かめる。
+    @Test fun logoIsVisibleAtBottomLeftInItsOwnStripAndDoesNotExposeText() {
         var clicks = 0
         compose.setContent {
-            Box(Modifier.size(320.dp, 480.dp).background(Color.White)) {
-                LogoOverlay(owned = false) {
-                    Box(Modifier.fillMaxSize().testTag("free-map").clickable { clicks++ })
-                }
+            Column(Modifier.size(320.dp, 480.dp).background(Color.White)) {
+                Box(Modifier.weight(1f).fillMaxWidth().testTag("free-content").clickable { clicks++ })
+                TrialLogoBar(owned = false)
             }
         }
         val logo = compose.onNodeWithTag("steps-logo", useUnmergedTree = true)
@@ -52,11 +53,13 @@ class LogoUiTest {
         @Suppress("DEPRECATION")
         logo.assert(SemanticsMatcher.keyIsDefined(SemanticsProperties.InvisibleToUser))
         val logoBounds = logo.fetchSemanticsNode().boundsInRoot
-        val map = compose.onNodeWithTag("free-map")
-        val mapBounds = map.fetchSemanticsNode().boundsInRoot
-        assertTrue(logoBounds.left < mapBounds.width / 4)
-        assertTrue(logoBounds.top > mapBounds.height * 0.9f)
-        map.performTouchInput { click(Offset(logoBounds.center.x - mapBounds.left, logoBounds.center.y - mapBounds.top)) }
+        val content = compose.onNodeWithTag("free-content")
+        val contentBounds = content.fetchSemanticsNode().boundsInRoot
+        assertTrue(logoBounds.left < contentBounds.width / 4)
+        // The strip reserves layout space: the logo sits below the content,
+        // never on top of it.
+        assertTrue(logoBounds.top >= contentBounds.bottom)
+        content.performTouchInput { click(Offset(contentBounds.width / 2, contentBounds.height / 2)) }
         compose.runOnIdle { assertEquals(1, clicks) }
         lateinit var bitmap: Bitmap
         compose.runOnIdle {
@@ -75,9 +78,10 @@ class LogoUiTest {
                 bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)
             }
         }
-        // The trial label's fill follows the theme's onBackground color at alpha .55 over white,
-        // so fully covered glyph pixels darken to .45; the outline layer uses the background
-        // color and does not darken a white background.
+        // The trial label's fill follows the theme's onBackground color at alpha .55
+        // over the strip's container color, so fully covered glyph pixels darken
+        // well below the backdrop; the outline layer uses the container color
+        // and does not darken it.
         assertTrue("Visible watermark expected: $darkest", darkest < 0.99f)
         assertTrue("Logo is too dark: $darkest", darkest >= 0.40f)
     }
@@ -89,16 +93,17 @@ class LogoUiTest {
     private fun assertThemeLogo(darkTheme: Boolean) {
         val owned = mutableStateOf(false)
         var clicks = 0
-        var background = Color.Unspecified
+        var backdrop = Color.Unspecified
         var foreground = Color.Unspecified
         compose.setContent {
             StepsAppTheme(themeMode = if (darkTheme) ThemeMode.DARK else ThemeMode.LIGHT) {
-                background = MaterialTheme.colorScheme.background
+                // The logo sits on the strip, so the blend backdrop is the
+                // strip's container color.
+                backdrop = MaterialTheme.colorScheme.surfaceContainer
                 foreground = MaterialTheme.colorScheme.onBackground
-                Box(Modifier.size(320.dp, 480.dp).background(background)) {
-                    LogoOverlay(owned.value) {
-                        Box(Modifier.fillMaxSize().testTag("themed-map").clickable { clicks++ })
-                    }
+                Column(Modifier.size(320.dp, 480.dp).background(MaterialTheme.colorScheme.background)) {
+                    Box(Modifier.weight(1f).fillMaxWidth().testTag("themed-content").clickable { clicks++ })
+                    TrialLogoBar(owned.value)
                 }
             }
         }
@@ -108,11 +113,11 @@ class LogoUiTest {
         @Suppress("DEPRECATION")
         logo.assert(SemanticsMatcher.keyIsDefined(SemanticsProperties.InvisibleToUser))
         val bounds = logo.fetchSemanticsNode().boundsInRoot
-        val map = compose.onNodeWithTag("themed-map")
-        val mapBounds = map.fetchSemanticsNode().boundsInRoot
-        assertTrue(bounds.left < mapBounds.width / 4)
-        assertTrue(bounds.top > mapBounds.height * 0.9f)
-        map.performTouchInput { click(bounds.center - mapBounds.topLeft) }
+        val content = compose.onNodeWithTag("themed-content")
+        val contentBounds = content.fetchSemanticsNode().boundsInRoot
+        assertTrue(bounds.left < contentBounds.width / 4)
+        assertTrue(bounds.top >= contentBounds.bottom)
+        content.performTouchInput { click(Offset(contentBounds.width / 2, contentBounds.height / 2)) }
         compose.runOnIdle { assertEquals(1, clicks) }
 
         lateinit var bitmap: Bitmap
@@ -121,7 +126,7 @@ class LogoUiTest {
             bitmap = Bitmap.createBitmap(view.width, view.height, Bitmap.Config.ARGB_8888)
             view.draw(Canvas(bitmap))
         }
-        val bg = floatArrayOf(background.red, background.green, background.blue)
+        val bg = floatArrayOf(backdrop.red, backdrop.green, backdrop.blue)
         val fg = floatArrayOf(foreground.red, foreground.green, foreground.blue)
         val coverage = FloatArray(3)
         for (y in bounds.top.toInt() until bounds.bottom.toInt()) {
@@ -137,11 +142,11 @@ class LogoUiTest {
             }
         }
         // Fully covered glyph pixels blend onBackground at .55; the outline layer blends
-        // toward the background color, and edges are antialiased.
+        // toward the strip's container color, and edges are antialiased.
         coverage.forEach { assertEquals("Theme color and trial alpha", 0.55f, it, 0.025f) }
         compose.runOnIdle { owned.value = true }
         logo.assertDoesNotExist()
-        map.performClick()
+        content.performClick()
         compose.runOnIdle { assertEquals(2, clicks) }
     }
 
@@ -149,8 +154,9 @@ class LogoUiTest {
         val state = mutableStateOf(LogoBillingState())
         var actions = 0
         compose.setContent {
-            LogoOverlay(state.value.owned) {
-                Box(Modifier.fillMaxSize().testTag("free-content").clickable { actions++ })
+            Column(Modifier.fillMaxSize()) {
+                Box(Modifier.weight(1f).fillMaxWidth().testTag("free-content").clickable { actions++ })
+                TrialLogoBar(owned = state.value.owned)
             }
         }
         for (status in listOf(BillingStatus.PENDING, BillingStatus.CANCELED, BillingStatus.OFFLINE, BillingStatus.ERROR)) {

@@ -210,6 +210,24 @@ class BillingManagerTest {
         assertTrue(store.owned)
     }
 
+    // 歩数ログ側で追加したテスト（PR #23 のレビュー指摘への対応）。
+    // 先のトークンの承認が失敗しても、後のトークンの承認を試すこと。
+    // 未承認分は個別に承認する、という課金テンプレートの所有ルールに合わせる。
+    @Test fun `first acknowledgement failure does not skip the second purchase`() = runTest {
+        val play = FakePlay().apply {
+            inventory = StoreResult.Success(listOf(purchase(token = "A"), purchase(token = "B")))
+            ackResults["A"] = StoreResult.Failure(StoreError.ERROR)
+        }
+        val store = MemoryStore()
+        val manager = BillingManager(play, store, this)
+        manager.refresh(); runCurrent()
+        assertEquals(1, play.ackCalls["A"])
+        assertEquals(1, play.ackCalls["B"])
+        // B の承認が成功したので所有は確定し、A の失敗は表示に残る
+        assertTrue(store.owned)
+        assertEquals(BillingStatus.ERROR, manager.state.value.ackFailure)
+    }
+
     @Test fun `mixed acknowledged and unacknowledged acknowledges only the unacknowledged token`() = runTest {
         val play = FakePlay().apply {
             inventory = StoreResult.Success(listOf(purchase(ack = true, token = "A"), purchase(token = "B")))

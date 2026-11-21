@@ -214,6 +214,12 @@ class BillingManager(
             }.distinctBy { it.token }
             if (unacknowledged.isNotEmpty()) {
                 update(BillingStatus.ACKNOWLEDGING)
+                // 未承認分は1件ずつ承認する。先の1件が失敗しても残りを
+                // 飛ばさない（課金テンプレートの所有ルール。ろかぴんの移植元は
+                // 最初の失敗で return していたため、歩数ログ側で直した。
+                // PR #23 のレビュー指摘）。失敗は ackFailure に残し、
+                // 次の照会でその分だけ再試行する。
+                var lastFailure: StoreError? = null
                 for (purchase in unacknowledged) {
                     when (val result = gateway.acknowledge(purchase.token)) {
                         is StoreResult.Failure -> {
@@ -221,9 +227,7 @@ class BillingManager(
                             val failure = failStatus(result.error)
                             setAckFailure(failure)
                             if (purchaseFlow) setNotice(failure)
-                            if (entitlementProven) setOwned(true)
-                            fail(result.error)
-                            return
+                            lastFailure = result.error
                         }
                         is StoreResult.Success -> {
                             acknowledgedTokens.add(purchase.token)
@@ -232,6 +236,11 @@ class BillingManager(
                             entitlementProven = true
                         }
                     }
+                }
+                if (entitlementProven) setOwned(true)
+                if (lastFailure != null) {
+                    fail(lastFailure)
+                    return
                 }
             }
             if (ackFailedTokens.isEmpty()) setAckFailure(null)

@@ -1,7 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Steps Log</string>
-
     <!-- Billing (trial logo and remove_logo). Wording follows the KB Code billing template. -->
     <string name="logo_trial_label">Steps Log Trial</string>
     <string name="billing_remove_logo">Remove logo</string>
