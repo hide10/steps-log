@@ -6,6 +6,16 @@
 
 最終更新: 2026-09-30（v1.2.0 を公開）
 
+## 2026-11-21: Play リリース準備 第1弾（パッケージ名変更・targetSdk 36・INTERNET 権限削除）
+
+- ブランチ `play-release/package-rename`（PR は別途作成。main へはまだマージしない）。
+- **パッケージ名を `app.stepsapp` から `com.kbcode.steps` へ変更**（本人の決定、同日）。applicationId / namespace / Kotlin パッケージをすべて移した。FileProvider の authorities は `${applicationId}` 参照なので自動で追随する。週次レビューのアクション文字列（`ui/navigation/Routes.kt`）と `dev.sh` の `run-as` も新名へ合わせた。
+- **targetSdk を 35 から 36 へ**（Play の新規アプリ要件）。
+- **INTERNET 権限を削除**。用途だった GitHub アップロードは廃止済みで、現行コードにネットワーク API（java.net / HttpURLConnection / OkHttp 等）の使用が無いことを grep で確認した。バックアップはフォルダ選択（SAF）による書き出しのみで、ネットワーク権限は不要。
+- 検証: `./dev.sh` で Android 258 件 / server 30 件 / web 29 件すべて通過（失敗 0）。`bundleRelease` で AAB の生成に成功し、既存のリリース鍵（`~/steps-app-keys/`）で署名されていることを確認した。**実機インストールだけは WSL の Windows 相互運用（vsock）の不調で adb.exe が起動できず未実施**（環境の問題で、コードとは無関係。相互運用が戻ったら新アプリとしてインストールして確認すること）。
+- 移行への影響: 新パッケージは旧アプリ（app.stepsapp）とは**別アプリ**として入る。記録の移行は JSON バックアップ経由で可能。バックアップ形式（`domain/Backup.kt`）にはパッケージ識別子が含まれず、読み込み側にもパッケージの検査が無いことをコードで確認した。旧アプリで書き出した steps.json を、新アプリでフォルダを選んで読み込めば移行できる。
+
+
 ## PR #14: 朝の誤警告を止める
 
 - PR: https://github.com/hide10/steps-log/pull/14 。歩数センサーは未歩行時にイベントを返さないため、生ログの最終時刻だけで計測停止を判定すると朝に誤警告が出る。
@@ -102,7 +112,7 @@ cd server && bun test && bun src/server.ts   # :8430
   # adb shell はバイナリを壊すので exec-out。端末に sqlite3 は無い。
   # Room は WAL なので -wal も取らないとテーブルが空に見える
   for f in steps.db steps.db-wal steps.db-shm; do
-    $ADB -s $SERIAL exec-out "run-as app.stepsapp cat databases/$f" > /tmp/d.${f#steps.db}
+    $ADB -s $SERIAL exec-out "run-as com.kbcode.steps cat databases/$f" > /tmp/d.${f#steps.db}
   done
   ```
 - エミュレータにテストデータを入れるときは、**Room が作った DB を pull して

@@ -1,9 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- steps.json を GitHub へアップロードするため -->
-    <uses-permission android:name="android.permission.INTERNET" />
-
     <!-- 歩数センサー(TYPE_STEP_COUNTER)の読み取りに必須のランタイム権限 -->
     <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />
     <!-- 計測が止まっていることを知らせるため。拒否されても記録自体は動く -->

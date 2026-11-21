@@ -72,7 +72,7 @@ echo "   端末: $serial"
 echo "== 今の記録 =="
 tmp=$(mktemp -d)
 for f in steps.db steps.db-wal steps.db-shm; do
-  "$ADB" -s "$serial" exec-out "run-as app.stepsapp cat databases/$f" \
+  "$ADB" -s "$serial" exec-out "run-as com.kbcode.steps cat databases/$f" \
     > "$tmp/${f/steps.db/d.db}" 2>/dev/null || true
 done
 sqlite3 -header -column "$tmp/d.db" \

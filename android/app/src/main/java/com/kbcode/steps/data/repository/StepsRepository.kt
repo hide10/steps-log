@@ -1,0 +1,553 @@
+package com.kbcode.steps.data.repository
+
+import android.content.Context
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.core.content.ContextCompat
+import android.util.Log
+import com.kbcode.steps.data.local.DailyStepEntity
+import com.kbcode.steps.data.local.HealthConnectReader
+import com.kbcode.steps.data.local.SensorOffsetEntity
+import com.kbcode.steps.data.local.SleepEntity
+import com.kbcode.steps.data.local.VitalEntity
+import com.kbcode.steps.data.local.WeightEntity
+import com.kbcode.steps.data.local.StepCounterReader
+import com.kbcode.steps.data.local.StepReadingRawEntity
+import com.kbcode.steps.data.local.GoalHistoryEntity
+import com.kbcode.steps.data.local.StepsDatabase
+import com.kbcode.steps.domain.GoalHistory
+import com.kbcode.steps.domain.HourReading
+import com.kbcode.steps.domain.RecordKind
+import com.kbcode.steps.domain.Records
+import com.kbcode.steps.domain.HourlySteps
+import com.kbcode.steps.domain.GoalPeriod
+import com.kbcode.steps.domain.SensorState
+import com.kbcode.steps.domain.StepSource
+import com.kbcode.steps.domain.applyReading
+import com.kbcode.steps.domain.applyLiveReading
+import com.kbcode.steps.domain.HealthStatus
+import com.kbcode.steps.domain.DiagnosticEvidence
+import com.kbcode.steps.domain.HealthConnectRead
+import com.kbcode.steps.domain.checkHealth
+import com.kbcode.steps.domain.ChosenSteps
+import com.kbcode.steps.domain.chooseSteps
+import com.kbcode.steps.domain.hourlyFromReadings
+import com.kbcode.steps.domain.currentStreak
+import com.kbcode.steps.domain.longestStreak
+import com.kbcode.steps.domain.newRecordsToday
+import com.kbcode.steps.domain.records
+import com.kbcode.steps.domain.WeeklyReport
+import com.kbcode.steps.domain.weeklyReport
+import com.kbcode.steps.domain.completedWeeklyReport
+import com.kbcode.steps.domain.isDivergent
+import com.kbcode.steps.domain.pickWeight
+import com.kbcode.steps.domain.shouldReplaceDay
+import com.kbcode.steps.domain.totalSleepMinutes
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneId
+
+/**
+ * 歩数の読み取りと保存をまとめる。
+ *
+ * DI フレームワークは使わず、locapin と同じ `@Volatile` シングルトン方式で通す。
+ */
+class StepsRepository private constructor(context: Context) {
+
+    data class SyncReport(val applied: Boolean, val healthConnectRead: HealthConnectRead)
+
+    private val appContext = context.applicationContext
+
+    private val dao = StepsDatabase.getInstance(context).stepsDao()
+    private val prefs = com.kbcode.steps.data.local.PrefsStore.getInstance(context)
+    private val sensorReader = StepCounterReader(context)
+    private val healthConnect = HealthConnectReader(context)
+
+    // ワーカーと常駐サービスが同時に書くので、読んでから書き戻すまでを排他にする
+    private val sensorLock = Mutex()
+    private val dayLock = Mutex()
+
+    fun sensorAvailable(): Boolean = sensorReader.isAvailable()
+
+    fun healthConnectAvailable(): Boolean = healthConnect.isAvailable()
+
+    suspend fun healthConnectGranted(): Boolean = healthConnect.hasPermission()
+
+    fun observeDay(date: String): Flow<DailyStepEntity?> = dao.observeDay(date)
+
+    fun recentDays(limit: Int): Flow<List<DailyStepEntity>> = dao.recentDays(limit)
+
+    fun recentWeights(limit: Int): Flow<List<WeightEntity>> = dao.recentWeights(limit)
+
+    fun recentSleep(limit: Int): Flow<List<SleepEntity>> = dao.recentSleep(limit)
+
+    /** 今日の記録が無くても最後に眠れた分を出せるようにする。 */
+    fun latestSleep(): Flow<SleepEntity?> = dao.latestSleep()
+
+    fun latestVitals(): Flow<List<VitalEntity>> = dao.latestVitals()
+
+    fun recentVitals(days: Int): Flow<List<VitalEntity>> = dao.recentVitals(days)
+
+    fun today(): String = LocalDate.now().toString()
+
+    /** その日の採用値。記録が無ければ 0。 */
+    suspend fun stepsOn(date: String): Long = dao.findDay(date)?.stepCount ?: 0L
+
+    /** 権限・読み取り手段と今回確認できた失敗から計測状態を診断する。 */
+    suspend fun healthStatus(
+        evidence: DiagnosticEvidence = DiagnosticEvidence(),
+        now: Long = System.currentTimeMillis(),
+    ): HealthStatus =
+        checkHealth(
+            hasActivityPermission = activityPermissionGranted(),
+            sensorAvailable = sensorReader.isAvailable(),
+            healthConnectGranted = healthConnect.hasPermission(),
+            lastReadingAt = dao.lastReadingAt(),
+            now = now,
+            evidence = evidence,
+        )
+
+    private fun activityPermissionGranted(): Boolean =
+        Build.VERSION.SDK_INT < Build.VERSION_CODES.Q ||
+            ContextCompat.checkSelfPermission(
+                appContext,
+                android.Manifest.permission.ACTIVITY_RECOGNITION,
+            ) == PackageManager.PERMISSION_GRANTED
+
+    /**
+     * 両方のソースを読んで日次歩数へ反映する。
+     *
+     * センサーは「読むたびに差分を積む」性質上、読んだ値を必ず状態へ反映する必要があるが、
+     * **日次の採用値は [chooseSteps] が選んだ片方だけ**を書き込む。合算はしない。
+     *
+     * @return 反映結果と、当日の Health Connect 読み取り結果
+     */
+    suspend fun sync(now: Long = System.currentTimeMillis()): SyncReport {
+        val date = today()
+
+        val sensorTotals = readSensor(date, now)
+        val hcRead = readHealthConnect(date, now)
+        val hcByDay = hcRead.stepsByDay
+
+        // 更新が必要な日（センサーの日跨ぎぶんと、Health Connect で読み直した直近の日）
+        val days = buildSet {
+            addAll(sensorTotals.keys)
+            addAll(hcByDay.keys)
+            add(date)
+        }
+
+        // 体重と睡眠も取り込む。歩数のおまけなので、失敗しても歩数の処理は止めない
+        syncHealth()
+        // 過去データの取り込みは重いので初回だけ。以降は当日ぶんで足りる
+        if (!prefs.backfillDone) backfillFromHealthConnect(now)
+
+        var applied = false
+        for (day in days) {
+            val hcForDay = hcByDay[day]
+            val sensorForDay = sensorTotals[day]
+
+            if (day == date && isDivergent(hcForDay, sensorForDay)) {
+                Log.i(TAG, "$day: HC=$hcForDay と SENSOR=$sensorForDay の乖離が大きい")
+            }
+
+            val chosen = chooseSteps(healthConnect = hcForDay, sensor = sensorForDay) ?: continue
+
+            applyDay(day, chosen, now)
+            applied = true
+        }
+        return SyncReport(applied, hcRead.todayStatus)
+    }
+
+    /**
+     * その日の採用値を書き込む。**歩数は1日のなかで減らない**ので、
+     * 減る方向の上書きは「信頼できるソースが一時的に読めなかった」ことを意味し、拒否する。
+     *
+     * 読んでから書くまでを排他にする。ワーカーと常駐サービスが挟まると、
+     * 大きい値を読んだあとに小さい値で上書きしてしまう。
+     */
+    private suspend fun applyDay(day: String, chosen: ChosenSteps, now: Long) = dayLock.withLock {
+        val existing = dao.findDay(day)
+        if (!shouldReplaceDay(
+                existingCount = existing?.stepCount,
+                existingSource = existing?.source?.let { StepSource.from(it) },
+                incoming = chosen,
+            )
+        ) {
+            return@withLock
+        }
+        dao.upsertDay(
+            DailyStepEntity(
+                localDate = day,
+                stepCount = chosen.stepCount,
+                source = chosen.source.name,
+                updatedAt = now,
+                syncedAt = null,
+            ),
+        )
+    }
+
+    /**
+     * Health Connect から体重と睡眠を取り込む。
+     *
+     * 権限が無ければ読み取りが空を返すだけなので、拒否されていても害はない。
+     */
+    private suspend fun syncHealth(days: Long = HEALTH_LOOKBACK_DAYS) {
+        val to = LocalDate.now()
+        val from = to.minusDays(days)
+
+        runCatching {
+            healthConnect.readWeights(from, to)
+                .groupBy { it.localDate }
+                .forEach { (date, points) ->
+                    // その日の最後に測った値を採る
+                    pickWeight(points)?.let {
+                        dao.upsertWeight(WeightEntity(date, it.kg, it.recordedAt))
+                    }
+                }
+        }.onFailure { Log.w(TAG, "体重の取り込みに失敗した", it) }
+
+        runCatching {
+            healthConnect.readSleep(from, to)
+                .groupBy { it.localDate }
+                .forEach { (date, points) ->
+                    // 途中で目が覚めて分かれたセッションは合算する
+                    dao.upsertSleep(
+                        SleepEntity(
+                            localDate = date,
+                            minutes = totalSleepMinutes(points),
+                            startAt = points.minOf { it.startAt },
+                            endAt = points.maxOf { it.endAt },
+                        ),
+                    )
+                }
+        }.onFailure { Log.w(TAG, "睡眠の取り込みに失敗した", it) }
+
+        // 心拍・血圧・距離など、取れるものは全部取る
+        runCatching {
+            val vitals = healthConnect.readVitals(from, to)
+            for (v in vitals) {
+                dao.upsertVital(
+                    VitalEntity(
+                        localDate = v.localDate,
+                        kind = v.kind.name,
+                        value = v.value,
+                        updatedAt = System.currentTimeMillis(),
+                    ),
+                )
+            }
+            if (vitals.isNotEmpty()) {
+                Log.i(TAG, "そのほかの健康データを ${vitals.size} 件取り込んだ")
+            }
+        }.onFailure { Log.w(TAG, "健康データの取り込みに失敗した", it) }
+    }
+
+    /** センサーを1回読み、状態を進めて「日付 -> その日の歩数」を返す。 */
+    private suspend fun readSensor(date: String, now: Long): Map<String, Long> {
+        val reading = sensorReader.read() ?: run {
+            Log.w(TAG, "歩数センサーを読めなかった（今回はスキップ）")
+            return emptyMap()
+        }
+        return advanceSensor(reading, date, now, live = false)
+    }
+
+    /**
+     * 常駐サービスが受け取ったセンサーの値を記録する。
+     *
+     * @param resumed 常駐を始めて最初の値か。止まっていた間の差分を含むので、
+     *                日跨ぎは [applyReading] の規則（長く空いていたら捨てる）で扱う
+     */
+    suspend fun recordLiveReading(reading: Long, date: String, at: Long, resumed: Boolean) {
+        val totals = advanceSensor(reading, date, at, live = !resumed)
+        for ((day, steps) in totals) {
+            applyDay(day, ChosenSteps(StepSource.SENSOR, steps), at)
+        }
+    }
+
+    /**
+     * センサーの状態を進めて生ログに残し、「日付 -> その日の歩数」を返す。
+     *
+     * @param live 常駐して受け取り続けている値か。日跨ぎの振り分けが変わる
+     */
+    private suspend fun advanceSensor(
+        reading: Long,
+        date: String,
+        now: Long,
+        live: Boolean,
+    ): Map<String, Long> = sensorLock.withLock {
+        val previous = dao.sensorState()?.let {
+            SensorState(
+                baseReading = it.baseReading,
+                baseDate = it.baseDate,
+                accumulated = it.accumulated,
+            )
+        }
+
+        val update = if (live && previous != null) {
+            applyLiveReading(previous, reading, date)
+        } else {
+            // 前回センサーを読めてからの経過時間。今回ぶんを書き込む前に取る
+            val elapsed = dao.lastSensorReadingAt()?.let { now - it }
+            applyReading(previous, reading, date, elapsed)
+        }
+        if (update.rebootDetected) {
+            Log.i(TAG, "端末の再起動を検知したためオフセットを打ち直した")
+        }
+
+        dao.insertRaw(
+            StepReadingRawEntity(
+                localDate = date,
+                source = StepSource.SENSOR.name,
+                stepCount = reading,
+                recordedAt = now,
+            ),
+        )
+        dao.saveSensorState(
+            SensorOffsetEntity(
+                baseReading = update.newState.baseReading,
+                baseDate = update.newState.baseDate,
+                accumulated = update.newState.accumulated,
+            ),
+        )
+        update.dayTotals
+    }
+
+    /**
+     * Health Connect の過去データを取り込む。
+     *
+     * **当日しか読まないと、それ以前の記録を取りこぼす。**
+     * Health Connect には権限付与前のデータも入っているため、
+     * アプリを入れた時点で過去分がまとめて手に入る。
+     *
+     * 既存の値は [shouldReplaceDay] を通すので、
+     * 大きい値を小さい値で上書きすることはない。
+     */
+    private suspend fun backfillFromHealthConnect(now: Long) {
+        val to = LocalDate.now()
+        val days = if (healthConnect.hasHistoryPermission()) {
+            HISTORY_LOOKBACK_DAYS
+        } else {
+            // 履歴権限が無ければ、権限付与から遡れるのは既定で30日
+            HEALTH_LOOKBACK_DAYS
+        }
+        val from = to.minusDays(days)
+
+        runCatching {
+            val range = healthConnect.readRange(from, to)
+            for ((day, steps) in range) {
+                val chosen = ChosenSteps(StepSource.HEALTH_CONNECT, steps)
+                val existing = dao.findDay(day)
+                if (!shouldReplaceDay(
+                        existingCount = existing?.stepCount,
+                        existingSource = existing?.source?.let { StepSource.from(it) },
+                        incoming = chosen,
+                    )
+                ) continue
+
+                dao.upsertDay(
+                    DailyStepEntity(
+                        localDate = day,
+                        stepCount = steps,
+                        source = StepSource.HEALTH_CONNECT.name,
+                        updatedAt = now,
+                        syncedAt = null,
+                    ),
+                )
+            }
+            if (range.isNotEmpty()) {
+                Log.i(TAG, "Health Connect から ${range.size} 日分を取り込んだ")
+            }
+            // 成功したときだけ済みにする。途中で失敗したら次回やり直す
+            prefs.backfillDone = true
+        }.onFailure { Log.w(TAG, "過去データの取り込みに失敗した", it) }
+    }
+
+    /**
+     * Health Connect から**直近数日ぶん**の歩数を読む。読めなかった日は含まれない。
+     *
+     * **当日だけ読むと、あとから届いた分を取りこぼす。** Health Connect に書く側の
+     * 同期が遅れると、日付が変わってから前日の歩数が増えることがある。
+     * 読み直しても [shouldReplaceDay] を通すので、減る方向には書き換わらない。
+     *
+     * 生ログは当日ぶんだけ残す。過去の日は訂正なので、取り込み（backfill）と同じ扱い。
+     */
+    private suspend fun readHealthConnect(
+        date: String,
+        now: Long,
+    ): HealthConnectReader.RangeRead {
+        val today = LocalDate.parse(date)
+        val read = healthConnect.readRangeDiagnosed(today.minusDays(RECENT_DAYS), today)
+        val steps = read.stepsByDay[date] ?: return read
+        dao.insertRaw(
+            StepReadingRawEntity(
+                localDate = date,
+                source = StepSource.HEALTH_CONNECT.name,
+                stepCount = steps,
+                recordedAt = now,
+            ),
+        )
+        return read
+    }
+
+    /**
+     * 端末再起動後に呼ぶ。
+     *
+     * センサーの状態は消さない。次回の読み取りで「今回値 < 前回値」として
+     * 再起動が検知されるのに任せることで、その日のそれまでの歩数を失わずに済む。
+     */
+    suspend fun onBootCompleted() {
+        Log.i(TAG, "BOOT_COMPLETED: 次回の読み取りで再起動として処理される")
+    }
+
+    /**
+     * その日の1時間ごとの歩数。
+     *
+     * **Health Connect で読めるならそちらを使う。** 1時間ちょうどで区切った集計が
+     * 返るので、読み取りの間隔やワーカーの遅れに左右されない。
+     * 読めなければ生ログの差分で近似する。
+     *
+     * 差分を取るときは**採用値と同じソースの行だけ**を使う。センサーの累積カウンタと
+     * Health Connect の日合計は桁がまるで違うので、混ぜると意味のない値になる。
+     */
+    suspend fun hourlySteps(date: String): HourlySteps {
+        healthConnect.readHourly(LocalDate.parse(date))
+            ?.takeIf { !it.isEmpty }
+            ?.let { return it }
+
+        val source = dao.findDay(date)?.source ?: StepSource.SENSOR.name
+        val zone = ZoneId.systemDefault()
+        val readings = dao.rawOn(date)
+            .filter { it.source == source }
+            .map {
+                HourReading(
+                    hour = Instant.ofEpochMilli(it.recordedAt).atZone(zone).hour,
+                    cumulative = it.stepCount,
+                )
+            }
+        return hourlyFromReadings(readings)
+    }
+
+    // --- 自己記録 ---
+
+    /** 全期間の記録。過去の自分と比べるための数字だけを持つ。 */
+    suspend fun records(): Records {
+        val all = dao.allDays().associate { it.localDate to it.stepCount }
+        return records(all, goalHistory())
+    }
+
+    /**
+     * 今日で自己記録を更新したか。
+     *
+     * **「今日を除いた過去の最高」と比べる。** 今日を含めて数えた最高と比べても、
+     * 自分自身と比較することになって永遠に更新されない。
+     */
+    suspend fun todaysNewRecords(): List<RecordKind> {
+        val today = today()
+        val all = dao.allDays().associate { it.localDate to it.stepCount }
+        val past = all - today
+        if (past.isEmpty()) return emptyList()
+
+        val goals = goalHistory()
+        return newRecordsToday(
+            previousBestDay = past.values.maxOrNull() ?: 0,
+            previousLongest = longestStreak(past, goals),
+            todaySteps = all[today] ?: 0,
+            streakIncludingToday = currentStreak(all, LocalDate.parse(today), goals),
+        )
+    }
+
+    /**
+     * 先週のまとめ。記録が1日も無い週なら null。
+     *
+     * 月曜の朝に呼ぶ前提。週が完全に終わってから確定した数字を出す。
+     */
+    suspend fun lastWeekReport(): WeeklyReport? {
+        val all = dao.allDays().associate { it.localDate to it.stepCount }
+        return weeklyReport(all, LocalDate.parse(today()), goalHistory())
+    }
+
+    /** 通知に含めた週を、保存済みの記録から読み直す。 */
+    suspend fun completedWeeklyReport(weekStart: String): WeeklyReport? {
+        val start = runCatching { LocalDate.parse(weekStart) }.getOrNull() ?: return null
+        val all = dao.allDays().associate { it.localDate to it.stepCount }
+        return completedWeeklyReport(all, start, LocalDate.parse(today()), goalHistory())
+    }
+
+    /** 今日を含めた連続日数。通知の文面に使う。 */
+    suspend fun currentStreakToday(): Int {
+        val all = dao.allDays().associate { it.localDate to it.stepCount }
+        return currentStreak(all, LocalDate.parse(today()), goalHistory())
+    }
+
+    // --- 目標の履歴 ---
+
+    /**
+     * 目標の履歴。**達成の判定はすべてこれを通す。**
+     *
+     * 履歴が空なら、いまの設定を「最初の記録日から」の1件として作って移行する。
+     * 記録より前の日にはいちばん古い目標がさかのぼって適用されるので、
+     * 移行で過去の達成が消えることはない。
+     */
+    suspend fun goalHistory(now: Long = System.currentTimeMillis()): GoalHistory {
+        ensureGoalHistory(now)
+        return GoalHistory.of(dao.allGoals().map { GoalPeriod(it.effectiveFrom, it.dailySteps) })
+    }
+
+    /**
+     * 目標を変える。**その日から有効**で、それ以前の判定は変わらない。
+     *
+     * 目標を上げた瞬間に過去の達成済みの日が未達成に変わるのを防ぐのが、
+     * 履歴を持つ唯一の目的。
+     */
+    suspend fun setGoal(
+        steps: Long,
+        from: String = today(),
+        now: Long = System.currentTimeMillis(),
+    ) {
+        require(steps > 0) { "目標歩数は正の数: $steps" }
+
+        val next = goalHistory(now).changedOn(from, steps)
+        val before = dao.allGoals()
+        val wanted = next.periods.associate { it.from to it.dailySteps }
+
+        // 畳まれて要らなくなった行は消す。同じ目標が並ぶ履歴は「いつ変えたか」を読みにくくする
+        before.filter { it.effectiveFrom !in wanted }.forEach { dao.deleteGoal(it.effectiveFrom) }
+
+        val existing = before.associate { it.effectiveFrom to it.dailySteps }
+        wanted.filter { existing[it.key] != it.value }
+            .forEach { dao.upsertGoal(GoalHistoryEntity(it.key, it.value, now)) }
+
+        // ウィジェットや設定画面が同期的に読む「現在の目標」も合わせる
+        prefs.goalSteps = steps
+    }
+
+    /** 履歴が無い端末（版 3 までの DB）を1件だけ入れて移行する。 */
+    private suspend fun ensureGoalHistory(now: Long) {
+        if (dao.allGoals().isNotEmpty()) return
+        val from = dao.firstRecordedDate() ?: today()
+        dao.upsertGoal(GoalHistoryEntity(from, prefs.goalSteps, now))
+    }
+
+    companion object {
+        private const val TAG = "StepsRepository"
+
+        /** 体重・睡眠を遡って取り込む日数。Health Connect の既定の遡り上限に合わせる。 */
+        private const val HEALTH_LOOKBACK_DAYS = 30L
+
+        /** 履歴権限があるときに遡る日数。約3年。 */
+        private const val HISTORY_LOOKBACK_DAYS = 1100L
+
+        /** 毎回 Health Connect から読み直す、今日より前の日数。遅れて届いた分を拾う。 */
+        private const val RECENT_DAYS = 6L
+
+        @Volatile
+        private var instance: StepsRepository? = null
+
+        fun getInstance(context: Context): StepsRepository =
+            instance ?: synchronized(this) {
+                instance ?: StepsRepository(context.applicationContext).also { instance = it }
+            }
+    }
+}
