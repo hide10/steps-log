@@ -9,7 +9,7 @@
 |------|------|
 | Android | Kotlin 2.1.0 / Jetpack Compose + Material 3 / Room / WorkManager / Health Connect |
 | Min SDK | 26 (Android 8.0) |
-| Target SDK | 35 |
+| Target SDK | 36 |
 | Compile SDK | 36 (connect-client 1.1.0 の要求) |
 | Gradle / AGP | 8.13 / 8.11.1 |
 | サーバ | Bun + TypeScript + Hono + bun:sqlite |

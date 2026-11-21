@@ -23,13 +23,13 @@ plugins {
 }
 
 android {
-    namespace = "app.stepsapp"
+    namespace = "com.kbcode.steps"
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "app.stepsapp"
+        applicationId = "com.kbcode.steps"
         minSdk = 26
-        targetSdk = 35
+        targetSdk = 36
         versionCode = 5
         versionName = "1.2.0"
     }
