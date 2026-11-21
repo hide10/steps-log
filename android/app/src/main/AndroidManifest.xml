@@ -1,5 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- アプリ自身は通信しない。INTERNET は課金ライブラリの依存
+         （datatransport）からマニフェスト統合で入ってくるため、鏡と同じく
+         明示的に除去する。購入の通信は Play ストアアプリが行うので影響しない -->
+    <uses-permission android:name="android.permission.INTERNET" tools:node="remove" />
 
     <!-- 歩数センサー(TYPE_STEP_COUNTER)の読み取りに必須のランタイム権限 -->
     <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />

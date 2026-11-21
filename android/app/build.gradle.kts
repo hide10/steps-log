@@ -47,7 +47,14 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            // Play 公開に向け、KB Code の前例（ろかぴん・鏡）に合わせて有効化する。
+            // 判断の記録は ~/workspace/steps-release/STATUS.md を参照
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
             // 鍵が無い環境では署名なしのままにする（clone しただけでも組める）
             signingConfig = signingConfigs.findByName("release")
         }
