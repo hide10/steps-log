@@ -32,6 +32,8 @@ android {
         targetSdk = 36
         versionCode = 1
         versionName = "1.0.0"
+        // 動画撮影専用ビルド（demo）だけ true。製品ビルドでは常に false
+        buildConfigField("boolean", "DEMO_SENSOR", "false")
     }
 
     signingConfigs {
@@ -57,6 +59,12 @@ android {
             )
             // 鍵が無い環境では署名なしのままにする（clone しただけでも組める）
             signingConfig = signingConfigs.findByName("release")
+        }
+        // FGS 申告の動画撮影専用。歩数センサーが無いエミュレータでも常駐を実演する。
+        // main へはマージしない使い捨てのビルドタイプ
+        create("demo") {
+            initWith(getByName("debug"))
+            buildConfigField("boolean", "DEMO_SENSOR", "true")
         }
     }
 

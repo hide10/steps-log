@@ -21,6 +21,7 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
+import com.kbcode.steps.BuildConfig
 import com.kbcode.steps.MainActivity
 import com.kbcode.steps.R
 import com.kbcode.steps.data.local.PrefsStore
@@ -34,6 +35,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import java.time.LocalDate
@@ -56,6 +58,7 @@ class StepCountingService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val events = Channel<LiveEvent>(Channel.UNLIMITED)
     private var notificationJob: Job? = null
+    private var demoJob: Job? = null
     private var listening = false
 
     private val repo by lazy { StepsRepository.getInstance(this) }
@@ -106,6 +109,12 @@ class StepCountingService : Service() {
         if (manager == null || sensor == null ||
             !manager.registerListener(listener, sensor, SensorManager.SENSOR_DELAY_NORMAL)
         ) {
+            // 動画撮影専用ビルド（DEMO_SENSOR）だけ、センサーの代わりに疑似入力で常駐を実演する。
+            // 製品ビルドではフラグが false なので、従来どおり止まる
+            if (BuildConfig.DEMO_SENSOR) {
+                startDemoFeed()
+                return
+            }
             reception = SensorReception.FAILED
             Log.w(TAG, "歩数センサーを受け取れないので常駐しない")
             stopSelf()
@@ -118,6 +127,28 @@ class StepCountingService : Service() {
         notificationJob = scope.launch { followToday() }
     }
 
+    /**
+     * 歩数センサーが無い環境で、センサーの代わりにタイマーで増える累積値を
+     * 通常の受信と同じ経路（[events]）へ流す。動画撮影専用ビルドでのみ使う。
+     */
+    private fun startDemoFeed() {
+        listening = true
+        running = true
+        reception = SensorReception.LISTENING
+        scope.launch { consume() }
+        notificationJob = scope.launch { followToday() }
+        demoJob = scope.launch {
+            var value = 0L
+            while (true) {
+                delay(DEMO_STEP_INTERVAL_MS)
+                value++
+                events.trySend(
+                    LiveEvent(value, LocalDate.now().toString(), System.currentTimeMillis()),
+                )
+            }
+        }
+    }
+
     override fun onDestroy() {
         if (listening) {
             getSystemService(SensorManager::class.java)?.unregisterListener(listener)
@@ -125,6 +156,7 @@ class StepCountingService : Service() {
         running = false
         if (listening) reception = SensorReception.UNKNOWN
         notificationJob?.cancel()
+        demoJob?.cancel()
         // 間引いて持っている値は、consume() が閉じたのを見て書いてから終わる
         events.close()
         super.onDestroy()
@@ -216,6 +248,9 @@ class StepCountingService : Service() {
 
         /** DB へ書く間隔の下限。歩いている間は1歩ごとにイベントが来るので間引く */
         private const val WRITE_INTERVAL_MS = 60_000L
+
+        /** 動画撮影専用ビルドで疑似の歩数が増える間隔 */
+        private const val DEMO_STEP_INTERVAL_MS = 700L
 
         /** このプロセスで常駐が動いているか。立て直しを重ねて頼まないために持つ */
         @Volatile
