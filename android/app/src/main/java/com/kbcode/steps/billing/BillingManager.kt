@@ -219,6 +219,9 @@ class BillingManager(
                 // 最初の失敗で return していたため、歩数ログ側で直した。
                 // PR #23 のレビュー指摘）。失敗は ackFailure に残し、
                 // 次の照会でその分だけ再試行する。
+                // 表示（ackFailure / notice / status）に使う失敗は最後の1件を
+                // 代表とする。再試行は失敗した分すべてが対象なので、所有の
+                // 判定には影響しない。
                 var lastFailure: StoreError? = null
                 for (purchase in unacknowledged) {
                     when (val result = gateway.acknowledge(purchase.token)) {

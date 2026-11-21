@@ -228,6 +228,38 @@ class BillingManagerTest {
         assertEquals(BillingStatus.ERROR, manager.state.value.ackFailure)
     }
 
+    @Test fun `two acknowledgement failures are both attempted and nothing is owned`() = runTest {
+        val play = FakePlay().apply {
+            inventory = StoreResult.Success(listOf(purchase(token = "A"), purchase(token = "B")))
+            ackResults["A"] = StoreResult.Failure(StoreError.ERROR)
+            ackResults["B"] = StoreResult.Failure(StoreError.ERROR)
+        }
+        val store = MemoryStore()
+        val manager = BillingManager(play, store, this)
+        manager.refresh(); runCurrent()
+        assertEquals(1, play.ackCalls["A"])
+        assertEquals(1, play.ackCalls["B"])
+        assertFalse(store.owned)
+        assertEquals(BillingStatus.ERROR, manager.state.value.status)
+        assertEquals(BillingStatus.ERROR, manager.state.value.ackFailure)
+    }
+
+    @Test fun `acknowledgement success then failure still grants from the success`() = runTest {
+        val play = FakePlay().apply {
+            inventory = StoreResult.Success(listOf(purchase(token = "A"), purchase(token = "B")))
+            ackResults["B"] = StoreResult.Failure(StoreError.ERROR)
+        }
+        val store = MemoryStore()
+        val manager = BillingManager(play, store, this)
+        manager.refresh(); runCurrent()
+        assertEquals(1, play.ackCalls["A"])
+        assertEquals(1, play.ackCalls["B"])
+        // A の承認が成功しているので所有は確定し、B の失敗は表示に残る
+        assertTrue(store.owned)
+        assertEquals(BillingStatus.ERROR, manager.state.value.status)
+        assertEquals(BillingStatus.ERROR, manager.state.value.ackFailure)
+    }
+
     @Test fun `mixed acknowledged and unacknowledged acknowledges only the unacknowledged token`() = runTest {
         val play = FakePlay().apply {
             inventory = StoreResult.Success(listOf(purchase(ack = true, token = "A"), purchase(token = "B")))

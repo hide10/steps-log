@@ -61,6 +61,9 @@ class LogoUiTest {
         assertTrue(logoBounds.top >= contentBounds.bottom)
         content.performTouchInput { click(Offset(contentBounds.width / 2, contentBounds.height / 2)) }
         compose.runOnIdle { assertEquals(1, clicks) }
+        // Tapping the strip itself does nothing and does not reach the content.
+        compose.onRoot(useUnmergedTree = true).performTouchInput { click(logoBounds.center) }
+        compose.runOnIdle { assertEquals(1, clicks) }
         lateinit var bitmap: Bitmap
         compose.runOnIdle {
             val view = compose.activity.findViewById<View>(android.R.id.content)
@@ -79,10 +82,13 @@ class LogoUiTest {
             }
         }
         // The trial label's fill follows the theme's onBackground color at alpha .55
-        // over the strip's container color, so fully covered glyph pixels darken
-        // well below the backdrop; the outline layer uses the container color
-        // and does not darken it.
-        assertTrue("Visible watermark expected: $darkest", darkest < 0.99f)
+        // over the strip's container color. Compare against the strip's own
+        // backdrop (sampled at the right edge of the strip, away from the
+        // glyphs): the backdrop alone must not satisfy the darkness check.
+        val backdropRed = android.graphics.Color.red(
+            bitmap.getPixel(bitmap.width - 2, logoBounds.center.y.toInt()),
+        ) / 255f
+        assertTrue("Visible watermark expected: $darkest vs backdrop $backdropRed", darkest < backdropRed - 0.15f)
         assertTrue("Logo is too dark: $darkest", darkest >= 0.40f)
     }
 
